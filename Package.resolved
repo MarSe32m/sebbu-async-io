@@ -1,5 +1,5 @@
 {
-  "originHash" : "df910e9260b31504f3df6e4b1cb78f00f91fa461179f926322aed27cd7c67e5b",
+  "originHash" : "3aa112473bb64286f308cb7a48c0c669483c61c72830ebd81fd0240f6d770395",
   "pins" : [
     {
       "identity" : "sebbu-iocp",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/MarSe32m/sebbu-iocp.git",
       "state" : {
         "branch" : "main",
-        "revision" : "52a6e71eaf82125daa20bcc29a0ecd76203567b4"
+        "revision" : "90cddd77c439efa56d1c1015d65ad566118c9864"
       }
     },
     {
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections.git",
       "state" : {
-        "revision" : "8d9834a6189db730f6264db7556a7ffb751e99ee",
-        "version" : "1.4.0"
+        "revision" : "6675bc0ff86e61436e615df6fc5174e043e57924",
+        "version" : "1.4.1"
       }
     },
     {

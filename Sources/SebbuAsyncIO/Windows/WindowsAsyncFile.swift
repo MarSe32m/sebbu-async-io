@@ -8,6 +8,9 @@ internal final class WindowsAsyncFile: Sendable {
     @usableFromInline
     nonisolated(unsafe) let handle: HANDLE
 
+    @usableFromInline
+    let skipSuccessCompletions: Bool
+
     public var fileSize: Int {
         get throws {
             var upperSize: DWORD = 0
@@ -21,8 +24,9 @@ internal final class WindowsAsyncFile: Sendable {
     }
 
     @inlinable
-    init(handle: HANDLE) {
+    init(handle: HANDLE, skipSuccessCompletions: Bool) {
         self.handle = handle
+        self.skipSuccessCompletions = skipSuccessCompletions
     }
 
     @inlinable
@@ -38,7 +42,8 @@ internal final class WindowsAsyncFile: Sendable {
             throw IOCompletionPort.IOCPError.error(GetLastError())
         }
         try Eventloop.shared.associate(handle)
-        return WindowsAsyncFile(handle: handle)
+        let skipSuccessCompletions = SetFileCompletionNotificationModes(handle, UCHAR(FILE_SKIP_COMPLETION_PORT_ON_SUCCESS))
+        return WindowsAsyncFile(handle: handle, skipSuccessCompletions: skipSuccessCompletions)
     }
 
     @inlinable
@@ -54,7 +59,8 @@ internal final class WindowsAsyncFile: Sendable {
             throw IOCompletionPort.IOCPError.error(GetLastError())
         }
         try Eventloop.shared.associate(handle)
-        return WindowsAsyncFile(handle: handle)
+        let skipSuccessCompletions = SetFileCompletionNotificationModes(handle, UCHAR(FILE_SKIP_COMPLETION_PORT_ON_SUCCESS))
+        return WindowsAsyncFile(handle: handle, skipSuccessCompletions: skipSuccessCompletions)
     }
 
     @inlinable
@@ -70,13 +76,14 @@ internal final class WindowsAsyncFile: Sendable {
     }
 
     @inlinable
-    public func read(atMost: Int, atAbsoluteOffset offset: UInt) async throws(AsyncFile.Error) -> [UInt8] {
+    public func read(atMost: Int, atAbsoluteOffset offset: UInt, wait: Bool = false) async throws(AsyncFile.Error) -> [UInt8] {
         var buffer: [UInt8] = .init(repeating: 0, count: Swift.min(atMost, 1 << 32 - 1))
-        var completion: Eventloop.Completion
+        var result: Eventloop.SubmissionResult
+        var bytesRead: UInt32 = 0
         do {
             var span = buffer.mutableSpan
             var bytes = span.mutableBytes
-            completion = try await Eventloop.shared.readFile(handle: handle, buffer: &bytes, offset: UInt64(offset))
+            result = try await Eventloop.shared.readFile(handle: handle, buffer: &bytes, bytesRead: &bytesRead, offset: UInt64(offset), skipSuccessCompletions: !wait && skipSuccessCompletions)
             extendLifetime(bytes)
         } catch let error as IOCompletionPort.IOCPError {
             if case .error(let errCode) = error {
@@ -88,17 +95,26 @@ internal final class WindowsAsyncFile: Sendable {
         } catch {
             fatalError("Unreachable")
         }
-        buffer.removeLast(buffer.count - completion.bytes)
+        switch result {
+            case .synchronous: buffer.removeLast(buffer.count - Int(bytesRead))
+            case .completion(let completion): 
+                buffer.removeLast(buffer.count - completion.bytes)
+        }
         return buffer
     }
 
     @inlinable
-    public func write(data: [UInt8], atAbsoluteOffset offset: UInt) async throws {
+    public func write(data: [UInt8], atAbsoluteOffset offset: UInt, wait: Bool = false) async throws {
         var bytesWritten = 0
         while bytesWritten < data.count {
             let bytes = data.span.extracting(bytesWritten..<(data.count - bytesWritten)).bytes
-            let completion = try await Eventloop.shared.writeFile(handle: handle, buffer: bytes, offset: UInt64(offset))
-            bytesWritten += completion.bytes
+            var _bytesWritten: UInt32 = 0
+            let result = try await Eventloop.shared.writeFile(handle: handle, buffer: bytes, bytesWritten: &_bytesWritten, offset: UInt64(offset), skipSuccessCompletions: !wait && skipSuccessCompletions)
+            switch result {
+                case .synchronous: bytesWritten += Int(_bytesWritten)
+                case .completion(let completion):
+                    bytesWritten += completion.bytes
+            }
             extendLifetime(bytes)
         }
     }

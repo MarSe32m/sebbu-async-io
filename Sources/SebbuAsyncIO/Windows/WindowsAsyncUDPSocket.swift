@@ -8,11 +8,15 @@ internal final class WindowsAsyncUDPSocket: @unchecked Sendable {
     let socket: SOCKET
 
     @usableFromInline
+    let skipSuccessCompletions: Bool
+
+    @usableFromInline
     var wsaBufCache: PointerCache<WSABUF> = PointerCache(capacity: 2048)
 
     @inlinable
-    init(socket: SOCKET) {
+    init(socket: SOCKET, skipSuccessCompletions: Bool) {
         self.socket = socket
+        self.skipSuccessCompletions = skipSuccessCompletions
     }
 
     @inlinable
@@ -25,7 +29,8 @@ internal final class WindowsAsyncUDPSocket: @unchecked Sendable {
             throw IOCompletionPort.IOCPError.wsaError(WSAGetLastError())
         }
         try Eventloop.shared.associate(clientSocket)
-        return WindowsAsyncUDPSocket(socket: clientSocket)
+        let skipSuccessCompletions = SetFileCompletionNotificationModes(HANDLE(bitPattern: UInt(clientSocket)), UCHAR(FILE_SKIP_COMPLETION_PORT_ON_SUCCESS))
+        return WindowsAsyncUDPSocket(socket: clientSocket, skipSuccessCompletions: skipSuccessCompletions)
     }
 
     @inlinable
@@ -37,7 +42,8 @@ internal final class WindowsAsyncUDPSocket: @unchecked Sendable {
             _buffer.pointee.buf = .init(mutating: buffer.baseAddress?.assumingMemoryBound(to: CHAR.self))
             _buffer.pointee.len = UInt32(buffer.count)
         }
-        let _ = try await Eventloop.shared.send(socket: socket, buffer: _buffer, address: to)
+        var bytesSent: UInt32 = 0
+        let _ = try await Eventloop.shared.send(socket: socket, buffer: _buffer, bytesSent: &bytesSent, address: to, skipSuccessCompletions: skipSuccessCompletions)
     }
 
     @inlinable
@@ -50,8 +56,14 @@ internal final class WindowsAsyncUDPSocket: @unchecked Sendable {
             _buffer.pointee.buf = .init(buffer.baseAddress?.assumingMemoryBound(to: CHAR.self))
             _buffer.pointee.len = UInt32(buffer.count)
         }
-        let completion = try await Eventloop.shared.receive(socket: socket, buffer: _buffer, from: &from)
-        data.removeLast(data.count - completion.bytes)
+        var bytesReceived: UInt32 = 0
+        let result = try await Eventloop.shared.receive(socket: socket, buffer: _buffer, bytesReceived: &bytesReceived, from: &from, skipSuccessCompletions: skipSuccessCompletions)
+        switch result {
+            case .synchronous: 
+                data.removeLast(data.count - Int(bytesReceived))
+            case .completion(let completion):
+                data.removeLast(data.count - completion.bytes)
+        }
         return data
     }
 

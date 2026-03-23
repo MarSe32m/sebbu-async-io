@@ -27,7 +27,8 @@ let package = Package(
             dependencies: [
                 .product(name: "SebbuIOCP", package: "sebbu-iocp"),
                 .product(name: "SystemPackage", package: "swift-system"),
-                .product(name: "BasicContainers", package: "swift-collections")
+                .product(name: "BasicContainers", package: "swift-collections"),
+                .product(name: "DequeModule", package: "swift-collections")
             ],
             swiftSettings: [
                 .enableExperimentalFeature("Lifetimes"),

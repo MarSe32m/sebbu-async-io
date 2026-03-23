@@ -11,12 +11,16 @@ internal final class WindowsAsyncTCPListener: Sendable {
     let listenAddress: Endpoint
 
     @usableFromInline
+    let skipSuccessCompletions: Bool
+
+    @usableFromInline
     nonisolated(unsafe) var bufferCache: RawBufferPointerCache
 
     @inlinable
-    init(socket: SOCKET, address: Endpoint) {
+    init(socket: SOCKET, address: Endpoint, skipSuccessCompletions: Bool) {
         self.socket = socket
         self.listenAddress = address
+        self.skipSuccessCompletions = skipSuccessCompletions
         self.bufferCache = .init(capacity: 128, bufferSize: (MemoryLayout<sockaddr_storage>.size + 16) * 2)
     }
 
@@ -33,7 +37,8 @@ internal final class WindowsAsyncTCPListener: Sendable {
             throw IOCompletionPort.IOCPError.wsaError(WSAGetLastError())
         }
         try Eventloop.shared.associate(listenSocket)
-        return WindowsAsyncTCPListener(socket: listenSocket, address: on)
+        let skipSuccessCompletions = SetFileCompletionNotificationModes(HANDLE(bitPattern: UInt(listenSocket)), UCHAR(FILE_SKIP_COMPLETION_PORT_ON_SUCCESS))
+        return WindowsAsyncTCPListener(socket: listenSocket, address: on, skipSuccessCompletions: skipSuccessCompletions)
     }
 
     @inlinable
@@ -41,9 +46,10 @@ internal final class WindowsAsyncTCPListener: Sendable {
         let acceptSocket = WSASocketW(listenAddress.family == .IPv4 ? AF_INET : AF_INET6, SOCK_STREAM, IPPROTO_TCP.rawValue, nil, 0, DWORD(WSA_FLAG_OVERLAPPED))
         let buffer = bufferCache.pop()
         defer { bufferCache.push(buffer) }
-        let _ = try await Eventloop.shared.accept(listenSocket: socket, acceptSocket: acceptSocket, addressBuffer: buffer)
+        let _ = try await Eventloop.shared.accept(listenSocket: socket, acceptSocket: acceptSocket, addressBuffer: buffer, skipSuccessCompletions: skipSuccessCompletions)
         try Eventloop.shared.finishAccept(listenSocket: socket, acceptSocket: acceptSocket)
-        return WindowsAsyncTCPStream(socket: acceptSocket)
+        let skipSuccessCompletions = SetFileCompletionNotificationModes(HANDLE(bitPattern: UInt(acceptSocket)), UCHAR(FILE_SKIP_COMPLETION_PORT_ON_SUCCESS))
+        return WindowsAsyncTCPStream(socket: acceptSocket, skipSuccessCompletions: skipSuccessCompletions)
     }
 
     @inlinable

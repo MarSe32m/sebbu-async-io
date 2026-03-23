@@ -1,5 +1,6 @@
 import Synchronization
 import BasicContainers
+import DequeModule
 
 @usableFromInline
 struct PointerCache<T: ~Copyable>: @unchecked Sendable, ~Copyable {
@@ -83,7 +84,7 @@ struct Cache<T: ~Copyable>: @unchecked Sendable, ~Copyable {
     let mutex: Mutex<Void> = Mutex(())
 
     @usableFromInline
-    var cache: RigidArray<T>
+    var cache: RigidDeque<T>
 
     init(capacity: Int) {
         cache = .init(capacity: capacity)
@@ -98,7 +99,7 @@ struct Cache<T: ~Copyable>: @unchecked Sendable, ~Copyable {
 
     @inlinable
     mutating func pop() -> T? {
-        cache.popLast()
+        cache.popFirst()
     }
 
     @inlinable
