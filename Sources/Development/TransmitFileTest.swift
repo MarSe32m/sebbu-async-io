@@ -35,9 +35,15 @@ public func transmitFileTest() async throws {
     let tcpListener = try await AsyncTCPListener.listen(on: .anyIPv4(port: 25565), backlog: 10000)
     async let _ = try await serverFunc(tcpListener)
 
-    for _ in 0..<1000 {
-        let client = try await AsyncTCPStream.connect(to: .loopbackIPv4(port: 25565))
-        try await localClientFunc(client)
+    try await withThrowingDiscardingTaskGroup { group in 
+        for _ in 0..<1000 {
+            let client = try await AsyncTCPStream.connect(to: .loopbackIPv4(port: 25565))
+            try await localClientFunc(client)
+        }
+        for _ in 0..<100 {
+            let client = try await AsyncTCPStream.connect(to: .loopbackIPv4(port: 25565))
+            try await localClientFunc(client)
+        }
     }
     print("Done")
 }

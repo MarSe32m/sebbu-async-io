@@ -23,6 +23,9 @@ internal final class WindowsAsyncFile: Sendable {
         }
     }
 
+    @usableFromInline
+    let contextAllocator: ContextAllocator = ContextAllocator(cacheSize: 16)
+
     @inlinable
     init(handle: HANDLE, skipSuccessCompletions: Bool) {
         self.handle = handle
@@ -77,44 +80,47 @@ internal final class WindowsAsyncFile: Sendable {
 
     @inlinable
     public func read(atMost: Int, atAbsoluteOffset offset: UInt, wait: Bool = false) async throws(AsyncFile.Error) -> [UInt8] {
-        var buffer: [UInt8] = .init(repeating: 0, count: Swift.min(atMost, 1 << 32 - 1))
+        let context = contextAllocator.pop()
+        let buffer = IOBuffer(byteCount: Swift.min(atMost, Int(UInt32.max)))
         var result: Eventloop.SubmissionResult
         var bytesRead: UInt32 = 0
         do {
-            var span = buffer.mutableSpan
-            var bytes = span.mutableBytes
-            result = try await Eventloop.shared.readFile(handle: handle, buffer: &bytes, bytesRead: &bytesRead, offset: UInt64(offset), skipSuccessCompletions: !wait && skipSuccessCompletions)
-            extendLifetime(bytes)
+            var span = MutableRawSpan(_unsafeStart: buffer.baseAddress!, byteCount: buffer.capacity)
+            result = try await Eventloop.shared.readFile(context: context, handle: handle, buffer: &span, bytesRead: &bytesRead, offset: UInt64(offset), skipSuccessCompletions: !wait && skipSuccessCompletions)
         } catch let error as IOCompletionPort.IOCPError {
-            if case .error(let errCode) = error {
-                if errCode == ERROR_HANDLE_EOF {
-                    throw AsyncFile.Error.endOfFile
-                }
+            if case .error(let errCode) = error, errCode == ERROR_HANDLE_EOF {
+                throw AsyncFile.Error.endOfFile
             }
             throw AsyncFile.Error.unknownError
         } catch {
             fatalError("Unreachable")
         }
-        switch result {
-            case .synchronous: buffer.removeLast(buffer.count - Int(bytesRead))
-            case .completion(let completion): 
-                buffer.removeLast(buffer.count - completion.bytes)
+        let count = switch result {
+            case .synchronous: Int(bytesRead)
+            case .completion(let completion): completion.bytes
         }
-        return buffer
+        return buffer.toArray(count: count)
     }
 
     @inlinable
     public func write(data: [UInt8], atAbsoluteOffset offset: UInt, wait: Bool = false) async throws {
+        let context = contextAllocator.pop()
+        let buffer = IOBuffer(copying: data)
         var bytesWritten = 0
         while bytesWritten < data.count {
-            let bytes = data.span.extracting(bytesWritten..<(data.count - bytesWritten)).bytes
+            let chunkCount = Swift.min(data.count - bytesWritten, Int(UInt32.max))
+            let chunk = UnsafeRawBufferPointer(buffer.bytes(offset: bytesWritten, count: chunkCount))
+            let bytes = RawSpan(_unsafeStart: chunk.baseAddress!, byteCount: chunkCount)
             var _bytesWritten: UInt32 = 0
-            let result = try await Eventloop.shared.writeFile(handle: handle, buffer: bytes, bytesWritten: &_bytesWritten, offset: UInt64(offset), skipSuccessCompletions: !wait && skipSuccessCompletions)
-            switch result {
-                case .synchronous: bytesWritten += Int(_bytesWritten)
-                case .completion(let completion):
-                    bytesWritten += completion.bytes
+            let result = try await Eventloop.shared.writeFile(context: context, handle: handle, buffer: bytes, bytesWritten: &_bytesWritten, offset: UInt64(offset), skipSuccessCompletions: !wait && skipSuccessCompletions)
+            let writtenThisIteration = switch result {
+                case .synchronous: Int(_bytesWritten)
+                case .completion(let completion): completion.bytes
             }
+            if writtenThisIteration == 0 {
+                throw AsyncFile.Error.unknownError
+            }
+            bytesWritten += writtenThisIteration
             extendLifetime(bytes)
         }
     }
@@ -122,6 +128,10 @@ internal final class WindowsAsyncFile: Sendable {
     @inlinable
     public consuming func close() throws {
         CloseHandle(handle)
+    }
+    
+    deinit {
+        contextAllocator.clear()
     }
 }
 #endif

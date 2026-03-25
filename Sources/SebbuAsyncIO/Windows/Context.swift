@@ -1,16 +1,16 @@
 #if os(Windows)
-import WinSDK
+@preconcurrency import WinSDK
 import SebbuIOCP
 import Synchronization
 
 //FIXME: Define this in a C module
 @usableFromInline
-internal struct Context: ~Copyable {
+internal struct Context: ~Copyable, Sendable {
     @usableFromInline
     var overlapped: OVERLAPPED
 
     @usableFromInline
-    enum State: UInt, AtomicRepresentable {
+    enum State: UInt, AtomicRepresentable, Sendable {
         case start
         case dequeued
         case continuationSupplied
@@ -32,7 +32,7 @@ internal struct Context: ~Copyable {
     }
 
     @usableFromInline
-    var continuation: UnsafeContinuation<Eventloop.Completion, any Swift.Error>
+    var continuation: UnsafeContinuation<Eventloop.Completion, any Swift.Error>? = nil
 
     @usableFromInline
     var completion: Eventloop.Completion = Eventloop.Completion()
@@ -43,10 +43,25 @@ internal struct Context: ~Copyable {
     @usableFromInline
     let state: Atomic<State>
 
-    public init() {
+    @usableFromInline
+    nonisolated(unsafe) let deallocator: (consuming sending UnsafeMutablePointer<Context>) -> Void
+
+    public init(_ deallocator: @escaping ((consuming sending UnsafeMutablePointer<Context>) -> Void)) {
         self.overlapped = OVERLAPPED()
-        self.continuation = unsafeBitCast(Int(0), to: UnsafeContinuation<Eventloop.Completion, any Swift.Error>.self)
         self.state = .init(.start)
+        self.deallocator = deallocator
+    }
+
+    public mutating func reset() {
+        self.overlapped = OVERLAPPED()
+        self.state.store(.start, ordering: .relaxed)
+    }
+}
+
+extension UnsafeMutablePointer<Context> {
+    public func cache() {
+        nonisolated(unsafe) let _self = self
+        pointee.deallocator(_self)
     }
 }
 #endif

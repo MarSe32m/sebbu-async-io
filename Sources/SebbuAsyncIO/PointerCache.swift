@@ -10,6 +10,7 @@ struct PointerCache<T: ~Copyable>: @unchecked Sendable, ~Copyable {
     @usableFromInline
     var cache: Cache<UnsafeMutablePointer<T>>
 
+    @inlinable
     init(capacity: Int) {
         cache = .init(capacity: capacity)
     }
@@ -86,6 +87,7 @@ struct Cache<T: ~Copyable>: @unchecked Sendable, ~Copyable {
     @usableFromInline
     var cache: RigidDeque<T>
 
+    @inlinable
     init(capacity: Int) {
         cache = .init(capacity: capacity)
     }

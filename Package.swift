@@ -18,6 +18,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/MarSe32m/sebbu-iocp.git", branch: "main"),
+        .package(url: "https://github.com/MarSe32m/sebbu-ts-ds.git", branch: "main"),
         .package(url: "https://github.com/apple/swift-system.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.4.0")
     ],
@@ -26,6 +27,7 @@ let package = Package(
             name: "SebbuAsyncIO",
             dependencies: [
                 .product(name: "SebbuIOCP", package: "sebbu-iocp"),
+                .product(name: "SebbuTSDS", package: "sebbu-ts-ds"),
                 .product(name: "SystemPackage", package: "swift-system"),
                 .product(name: "BasicContainers", package: "swift-collections"),
                 .product(name: "DequeModule", package: "swift-collections")

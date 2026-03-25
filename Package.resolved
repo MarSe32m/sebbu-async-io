@@ -1,5 +1,5 @@
 {
-  "originHash" : "3aa112473bb64286f308cb7a48c0c669483c61c72830ebd81fd0240f6d770395",
+  "originHash" : "e7f4722bb4e5214a6dd8527d314da423a4cc9f0a75c40d2005f9175f0281fe91",
   "pins" : [
     {
       "identity" : "sebbu-iocp",
@@ -8,6 +8,15 @@
       "state" : {
         "branch" : "main",
         "revision" : "90cddd77c439efa56d1c1015d65ad566118c9864"
+      }
+    },
+    {
+      "identity" : "sebbu-ts-ds",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/MarSe32m/sebbu-ts-ds.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "915df952c543c2746ae70894926475052e2c3f52"
       }
     },
     {
