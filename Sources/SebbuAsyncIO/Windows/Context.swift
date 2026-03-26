@@ -46,20 +46,24 @@ internal struct Context: ~Copyable, Sendable {
     @usableFromInline
     nonisolated(unsafe) let deallocator: (consuming sending UnsafeMutablePointer<Context>) -> Void
 
+    @inlinable
     public init(_ deallocator: @escaping ((consuming sending UnsafeMutablePointer<Context>) -> Void)) {
         self.overlapped = OVERLAPPED()
         self.state = .init(.start)
         self.deallocator = deallocator
     }
 
+    @inlinable
     public mutating func reset() {
         self.overlapped = OVERLAPPED()
         self.state.store(.start, ordering: .relaxed)
     }
 }
 
-extension UnsafeMutablePointer<Context> {
-    public func cache() {
+internal extension UnsafeMutablePointer<Context> {
+    @inline(always)
+    @inlinable
+    func cache() {
         nonisolated(unsafe) let _self = self
         pointee.deallocator(_self)
     }

@@ -2,9 +2,6 @@
 import SebbuIOCP
 import WinSDK
 
-//TODO: Get rid of Foundation dependency
-import FoundationEssentials
-
 @usableFromInline
 internal final class Eventloop: Sendable {
     public enum SubmissionResult: Sendable {
@@ -35,12 +32,10 @@ internal final class Eventloop: Sendable {
     @usableFromInline
     static let shared: Eventloop = Eventloop()
 
-    @usableFromInline
-    let contextAllocator: ContextAllocator = ContextAllocator(cacheSize: 128)
-
     internal init() {
         self.iocp = try! IOCompletionPort(numberOfConcurrentThreads: 0)
-        for _ in 0..<ProcessInfo.processInfo.activeProcessorCount {
+        let threads = Int(GetActiveProcessorCount(WORD(ALL_PROCESSOR_GROUPS)))
+        for _ in 0..<threads {
             var thread = Thread {
                 self.workerFunction()
             }
@@ -118,8 +113,8 @@ internal final class Eventloop: Sendable {
     }
 
     @inlinable
-    internal func accept(context: UnsafeMutablePointer<Context>, listenSocket: SOCKET, acceptSocket: SOCKET, addressBuffer: UnsafeMutableRawBufferPointer, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
-        try await withContext(context: context, socket: listenSocket, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
+    internal func accept(listenSocket: SOCKET, acceptSocket: SOCKET, addressBuffer: UnsafeMutableRawBufferPointer, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
+        try await withContext(socket: listenSocket, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
             try iocp.accept(listenSocket: listenSocket, acceptSocket: acceptSocket, addressBuffer: addressBuffer, overlapped: overlapped)
         }
     }
@@ -130,8 +125,8 @@ internal final class Eventloop: Sendable {
     }
 
     @inlinable
-    internal func connect(context: UnsafeMutablePointer<Context>, socket: SOCKET, destination: UnsafePointer<sockaddr_storage>, destinationLength: Int, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
-        try await withContext(context: context, socket: socket, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
+    internal func connect(socket: SOCKET, destination: UnsafePointer<sockaddr_storage>, destinationLength: Int, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
+        try await withContext(socket: socket, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
             try iocp.connect(socket: socket, destination: destination, destinationLength: destinationLength, overlapped: overlapped)
         }
     }
@@ -142,15 +137,15 @@ internal final class Eventloop: Sendable {
     }
 
     @inlinable
-    internal func send(context: UnsafeMutablePointer<Context>, socket: SOCKET, buffer: UnsafeMutablePointer<WSABUF>, bytesSent: UnsafeMutablePointer<UInt32>, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
-        try await withContext(context: context, socket: socket, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
+    internal func send(socket: SOCKET, buffer: UnsafeMutablePointer<WSABUF>, bytesSent: UnsafeMutablePointer<UInt32>, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
+        try await withContext(socket: socket, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
             try iocp.send(socket: socket, buffers: .init(start: buffer, count: 1), bytesSent: bytesSent, flags: 0, overlapped: overlapped)
         }
     }
 
     @inlinable
-    internal func send(context: UnsafeMutablePointer<Context>, socket: SOCKET, buffer: UnsafeMutablePointer<WSABUF>, bytesSent: UnsafeMutablePointer<UInt32>, address: Endpoint, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
-        try await withContext(context: context, socket: socket, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
+    internal func send(socket: SOCKET, buffer: UnsafeMutablePointer<WSABUF>, bytesSent: UnsafeMutablePointer<UInt32>, address: Endpoint, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
+        try await withContext(socket: socket, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
             try address.withSockAddrPointer { address, addressLength in 
                 try iocp.send(socket: socket, buffers: .init(start: buffer, count: 1), bytesSent: bytesSent, flags: 0, address: address, addressLength: Int(addressLength), overlapped: overlapped)
             }
@@ -158,15 +153,15 @@ internal final class Eventloop: Sendable {
     }
 
     @inlinable
-    internal func receive(context: UnsafeMutablePointer<Context>, socket: SOCKET, buffer: UnsafeMutablePointer<WSABUF>, bytesReceived: UnsafeMutablePointer<UInt32>, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
-        try await withContext(context: context, socket: socket, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
+    internal func receive(socket: SOCKET, buffer: UnsafeMutablePointer<WSABUF>, bytesReceived: UnsafeMutablePointer<UInt32>, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
+        try await withContext(socket: socket, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
             try iocp.receive(socket: socket, buffers: .init(start: buffer, count: 1), bytesReceived: bytesReceived, flags: 0, overlapped: overlapped)
         }
     }
 
     @inlinable
-    internal func receive(context: UnsafeMutablePointer<Context>, socket: SOCKET, buffer: UnsafeMutablePointer<WSABUF>, bytesReceived: UnsafeMutablePointer<UInt32>, from: inout Endpoint, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
-        try await withContext(context: context, socket: socket, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
+    internal func receive(socket: SOCKET, buffer: UnsafeMutablePointer<WSABUF>, bytesReceived: UnsafeMutablePointer<UInt32>, from: inout Endpoint, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
+        try await withContext(socket: socket, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
             try from.withMutableSockAddrStoragePointer { from, addressLength in 
                 try iocp.receiveFrom(socket: socket, buffers: .init(start: buffer, count: 1), bytesReceived: bytesReceived, flags: 0, address: from, addressLength: addressLength, overlapped: overlapped)
             }
@@ -174,8 +169,8 @@ internal final class Eventloop: Sendable {
     }
 
     @inlinable
-    internal func readFile(context: UnsafeMutablePointer<Context>, handle: HANDLE, buffer: inout MutableRawSpan, bytesRead: UnsafeMutablePointer<UInt32>, offset: UInt64, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
-        try await withContext(context: context, handle: handle, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
+    internal func readFile(handle: HANDLE, buffer: inout MutableRawSpan, bytesRead: UnsafeMutablePointer<UInt32>, offset: UInt64, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
+        try await withContext(handle: handle, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
             try buffer.withUnsafeMutableBytes { buffer in 
                 try iocp.readFile(handle: handle, buffer: buffer, bytesRead: bytesRead, offset: offset, overlapped: overlapped)
             }
@@ -183,8 +178,8 @@ internal final class Eventloop: Sendable {
     }
 
     @inlinable
-    internal func writeFile(context: UnsafeMutablePointer<Context>, handle: HANDLE, buffer: borrowing RawSpan, bytesWritten: UnsafeMutablePointer<UInt32>, offset: UInt64, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
-        try await withContext(context: context, handle: handle, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
+    internal func writeFile(handle: HANDLE, buffer: borrowing RawSpan, bytesWritten: UnsafeMutablePointer<UInt32>, offset: UInt64, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
+        try await withContext(handle: handle, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
             try buffer.withUnsafeBytes { buffer in 
                 try iocp.writeFile(handle: handle, buffer: buffer, bytesWritten: bytesWritten, offset: offset, overlapped: overlapped)
             }
@@ -192,8 +187,8 @@ internal final class Eventloop: Sendable {
     }
 
     @inlinable
-    internal func transmitFile(context: UnsafeMutablePointer<Context>, socket: SOCKET, file: HANDLE, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
-        try await withContext(context: context, socket: socket, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
+    internal func transmitFile(socket: SOCKET, file: HANDLE, skipSuccessCompletions: Bool) async throws -> SubmissionResult {
+        try await withContext(socket: socket, skipSuccessCompletions: skipSuccessCompletions) { overlapped in 
             try iocp.transmitFile(socket: socket, file: file, overlapped: overlapped)
         }
     }

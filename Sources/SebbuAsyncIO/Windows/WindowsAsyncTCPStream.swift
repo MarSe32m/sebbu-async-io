@@ -14,9 +14,6 @@ internal final class WindowsAsyncTCPStream: @unchecked Sendable {
     var wsaBufCache: PointerCache<WSABUF> = PointerCache(capacity: 128)
 
     @usableFromInline
-    let contextAllocator: ContextAllocator = ContextAllocator(cacheSize: 16)
-
-    @usableFromInline
     init(socket: SOCKET, skipSuccessCompletions: Bool) {
         self.socket = socket
         self.skipSuccessCompletions = skipSuccessCompletions
@@ -40,12 +37,11 @@ internal final class WindowsAsyncTCPStream: @unchecked Sendable {
         
         try Eventloop.shared.associate(clientSocket)
         let destination = UnsafeMutablePointer<sockaddr_storage>.allocate(capacity: 1)
-        destination.initialize(to: to.storage)
+        destination.initialize(to: to.storage.storage.pointee)
         defer { destination.deallocate() }
         
-        let context = Eventloop.shared.contextAllocator.pop()
         do {
-            let _ = try await Eventloop.shared.connect(context: context, socket: clientSocket, destination: destination, destinationLength: Int(to.storageLength), skipSuccessCompletions: false)
+            let _ = try await Eventloop.shared.connect(socket: clientSocket, destination: destination, destinationLength: Int(to.storage.length.pointee), skipSuccessCompletions: false)
             try Eventloop.shared.finishConnect(socket: clientSocket)
         } catch {
             closesocket(clientSocket)
@@ -57,7 +53,6 @@ internal final class WindowsAsyncTCPStream: @unchecked Sendable {
 
     @inlinable
     public func send(_ data: [UInt8]) async throws {
-        let context = contextAllocator.pop()
         let _buffer = wsaBufCache.allocateUninitialized()
         defer { wsaBufCache.deallocateAndDeinitialize(_buffer) }
         _buffer.initialize(to: WSABUF())
@@ -70,7 +65,7 @@ internal final class WindowsAsyncTCPStream: @unchecked Sendable {
             _buffer.pointee.buf = .init(mutating: bufferSlice.baseAddress?.assumingMemoryBound(to: CHAR.self))
             _buffer.pointee.len = UInt32(bufferSlice.count)
             var submittedBytes: UInt32 = 0
-            let result = try await Eventloop.shared.send(context: context, socket: socket, buffer: _buffer, bytesSent: &submittedBytes, skipSuccessCompletions: skipSuccessCompletions)
+            let result = try await Eventloop.shared.send(socket: socket, buffer: _buffer, bytesSent: &submittedBytes, skipSuccessCompletions: skipSuccessCompletions)
             let sentThisIteration = switch result {
                 case .synchronous: Int(submittedBytes)
                 case .completion(let completion): completion.bytes
@@ -84,7 +79,6 @@ internal final class WindowsAsyncTCPStream: @unchecked Sendable {
 
     @inlinable
     public func receive(atLeast: Int = 1, atMost: Int) async throws -> [UInt8] {
-        let context = contextAllocator.pop()
         precondition(atLeast <= atMost, "atLeast must be less than or equal to atMost")
         precondition(atLeast >= 0, "atLeast must be positive")
         let _buffer = wsaBufCache.allocateUninitialized()
@@ -98,7 +92,7 @@ internal final class WindowsAsyncTCPStream: @unchecked Sendable {
             _buffer.pointee.buf = .init(mutating: bufferSlice.baseAddress?.assumingMemoryBound(to: CHAR.self))
             _buffer.pointee.len = UInt32(bufferSlice.count)
             var submittedBytes: UInt32 = 0
-            let result = try await Eventloop.shared.receive(context: context, socket: socket, buffer: _buffer, bytesReceived: &submittedBytes, skipSuccessCompletions: skipSuccessCompletions)
+            let result = try await Eventloop.shared.receive(socket: socket, buffer: _buffer, bytesReceived: &submittedBytes, skipSuccessCompletions: skipSuccessCompletions)
             let receivedThisIteration = switch result {
                 case .synchronous: Int(submittedBytes)
                 case .completion(let completion): completion.bytes
@@ -116,8 +110,7 @@ internal final class WindowsAsyncTCPStream: @unchecked Sendable {
 
     @inlinable
     public func transmit(file: borrowing AsyncFile) async throws {
-        let context = contextAllocator.pop()
-        let _ = try await Eventloop.shared.transmitFile(context: context, socket: socket, file: file.implementation.handle, skipSuccessCompletions: skipSuccessCompletions)
+        let _ = try await Eventloop.shared.transmitFile(socket: socket, file: file.implementation.handle, skipSuccessCompletions: skipSuccessCompletions)
     }
 
     @inlinable
@@ -126,7 +119,7 @@ internal final class WindowsAsyncTCPStream: @unchecked Sendable {
     }
 
     deinit {
-        contextAllocator.clear()
+        try? close()
     }
 }
 #endif

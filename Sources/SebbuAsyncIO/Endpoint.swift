@@ -44,24 +44,51 @@ public struct Endpoint: Sendable, CustomStringConvertible {
     }
 
     @usableFromInline
-    var storage: sockaddr_storage
+    internal final class Storage: @unchecked Sendable {
+        @usableFromInline
+        let storage: UnsafeMutablePointer<sockaddr_storage>
+
+        @usableFromInline
+        let length: UnsafeMutablePointer<Int32>
+
+        @inlinable
+        convenience init() {
+            self.init(storage: .init(), length: 0)
+        }
+
+        @inlinable
+        init(storage: sockaddr_storage, length: Int32) {
+            self.storage = .allocate(capacity: 1)
+            self.length = .allocate(capacity: 1)
+            self.storage.initialize(to: storage)
+            self.length.initialize(to: length)
+        }
+
+        @inlinable
+        func copy() -> Storage {
+            Storage(storage: storage.pointee, length: length.pointee)
+        }
+
+        @inlinable
+        deinit {
+            storage.deallocate()
+            length.deallocate()
+        }
+    }
 
     @usableFromInline
-    var storageLength: Int32
+    var storage: Storage
 
     public init() {
-        storage = sockaddr_storage()
-        storageLength = 0
+        storage = Storage()
     }
 
     @inlinable
-    init(storage: sockaddr_storage, storageLength: Int32) {
-        self.storage = storage
-        self.storageLength = storageLength
+    init(storage: sockaddr_storage, length: Int32) {
+        self.storage = Storage(storage: storage, length: length)
     }
 
     // MARK: - Construction
-
     public static func ipv4(host: String, port: UInt16) async throws -> Endpoint {
         try await resolve(host: host, port: port, family: numericCast(AF_INET))
     }
@@ -97,7 +124,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
                 dest.copyMemory(from: src)
             }
         }
-        self.init(storage: storage, storageLength: Int32(MemoryLayout<sockaddr_in>.size))
+        self.init(storage: storage, length: Int32(MemoryLayout<sockaddr_in>.size))
     }
 
     /// Fast path for a numeric IPv6 literal such as "::1".
@@ -128,7 +155,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
             }
         }
 
-        self.init(storage: storage, storageLength: Int32(MemoryLayout<sockaddr_in6>.size))
+        self.init(storage: storage, length: Int32(MemoryLayout<sockaddr_in6>.size))
     }
 
     public static func anyIPv4(port: UInt16) -> Endpoint {
@@ -149,7 +176,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
                 dest.copyMemory(from: src)
             }
         }
-        return Endpoint(storage: storage, storageLength: Int32(MemoryLayout<sockaddr_in>.size))
+        return Endpoint(storage: storage, length: Int32(MemoryLayout<sockaddr_in>.size))
     }
 
     public static func loopbackIPv4(port: UInt16) -> Endpoint {
@@ -170,7 +197,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
                 dest.copyMemory(from: src)
             }
         }
-        return Endpoint(storage: storage, storageLength: Int32(MemoryLayout<sockaddr_in>.size))
+        return Endpoint(storage: storage, length: Int32(MemoryLayout<sockaddr_in>.size))
     }
 
     public static func loopbackIPv6(port: UInt16) -> Endpoint {
@@ -191,7 +218,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
             }
         }
 
-        return Endpoint(storage: storage, storageLength: Int32(MemoryLayout<sockaddr_in6>.size))
+        return Endpoint(storage: storage, length: Int32(MemoryLayout<sockaddr_in6>.size))
     }
 
     public static func anyIPv6(port: UInt16) -> Endpoint {
@@ -212,12 +239,12 @@ public struct Endpoint: Sendable, CustomStringConvertible {
             }
         }
 
-        return Endpoint(storage: storage, storageLength: Int32(MemoryLayout<sockaddr_in6>.size))
+        return Endpoint(storage: storage, length: Int32(MemoryLayout<sockaddr_in6>.size))
     }
 
     // MARK: - Properties
     public var family: Family {
-        switch Int32(storage.ss_family) {
+        switch Int32(storage.storage.pointee.ss_family) {
         case AF_INET:
             return .IPv4
         case AF_INET6:
@@ -246,7 +273,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
     }
 
     public var host: String? {
-        let family = Int32(storage.ss_family)
+        let family = Int32(storage.storage.pointee.ss_family)
 
         switch family {
         case AF_INET:
@@ -285,10 +312,8 @@ public struct Endpoint: Sendable, CustomStringConvertible {
     public func withSockAddrPointer<R>(
         _ body: (UnsafePointer<sockaddr>, socklen_t) throws -> R
     ) rethrows -> R {
-        try withUnsafePointer(to: storage) {
-            try $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                try body($0, storageLength)
-            }
+        try storage.storage.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            try body($0, storage.length.pointee)
         }
     }
 
@@ -297,7 +322,10 @@ public struct Endpoint: Sendable, CustomStringConvertible {
     public mutating func withMutableSockAddrStoragePointer<R>(
         _ body: (UnsafeMutablePointer<sockaddr_storage>, UnsafeMutablePointer<socklen_t>) throws -> R
     ) rethrows -> R {
-        try body(&storage, &storageLength)
+        if !isKnownUniquelyReferenced(&storage) {
+            storage = storage.copy()
+        }
+        return try body(storage.storage, storage.length)
     }
 }
 
@@ -363,7 +391,7 @@ extension Endpoint {
             memcpy(destBytes.baseAddress!, aiAddr, length)
         }
 
-        self.init(storage: storage, storageLength: Int32(length))
+        self.init(storage: storage, length: Int32(length))
     }
 }
 

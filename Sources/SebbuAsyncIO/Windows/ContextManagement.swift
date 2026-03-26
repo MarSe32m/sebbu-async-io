@@ -71,8 +71,9 @@ struct ContextStateMachine: Sendable {
 
 extension Eventloop {
     @inlinable
-    func withContext(context: UnsafeMutablePointer<Context>, socket: SOCKET, skipSuccessCompletions: Bool, operation: (_ context: UnsafeMutablePointer<OVERLAPPED>) throws -> IOCompletionPort.SubmissionResult) async throws -> Eventloop.SubmissionResult {
+    func withContext(socket: SOCKET, skipSuccessCompletions: Bool, operation: (_ context: UnsafeMutablePointer<OVERLAPPED>) throws -> IOCompletionPort.SubmissionResult) async throws -> Eventloop.SubmissionResult {
         try Task.checkCancellation()
+        let context = ThreadLocalContextAllocator.allocate()
         let overlapped = UnsafeMutableRawPointer(context).assumingMemoryBound(to: OVERLAPPED.self)
         let stateMachine = ContextStateMachine(context: context, skipSuccessCompletions: skipSuccessCompletions)
 
@@ -97,9 +98,10 @@ extension Eventloop {
     }
 
     @inlinable
-    func withContext(context: UnsafeMutablePointer<Context>, handle: HANDLE, skipSuccessCompletions: Bool, operation: (_ context: UnsafeMutablePointer<OVERLAPPED>) throws -> IOCompletionPort.SubmissionResult) async throws -> Eventloop.SubmissionResult {
+    func withContext(handle: HANDLE, skipSuccessCompletions: Bool, operation: (_ context: UnsafeMutablePointer<OVERLAPPED>) throws -> IOCompletionPort.SubmissionResult) async throws -> Eventloop.SubmissionResult {
         nonisolated(unsafe) let handle = handle
         try Task.checkCancellation()
+        let context = ThreadLocalContextAllocator.allocate()
         let overlapped = UnsafeMutableRawPointer(context).assumingMemoryBound(to: OVERLAPPED.self)
         let stateMachine = ContextStateMachine(context: context, skipSuccessCompletions: skipSuccessCompletions)
 

@@ -14,7 +14,6 @@ fileprivate func serverFunc(_ server: AsyncTCPListener) async throws {
                 let bytes = try await client.receive(exactly: 8)
                 let bytesReceived = bytes.withUnsafeBytes { $0.loadUnaligned(as: Int.self) }
                 print("Client said they received: ", bytesReceived, byteCount)
-                try client.close()
             }
         }
     }
@@ -28,7 +27,6 @@ fileprivate func localClientFunc(_ client: AsyncTCPStream) async throws {
     bytes = try await client.receive(exactly: bytesToReceive)
     let byteCountBytes = withUnsafeBytes(of: bytes.count) { [UInt8]($0) }
     try await client.send(byteCountBytes)
-    try client.close()
 }
 
 public func transmitFileTest() async throws {
@@ -40,7 +38,7 @@ public func transmitFileTest() async throws {
             let client = try await AsyncTCPStream.connect(to: .loopbackIPv4(port: 25565))
             try await localClientFunc(client)
         }
-        for _ in 0..<100 {
+        for _ in 0..<1000 {
             let client = try await AsyncTCPStream.connect(to: .loopbackIPv4(port: 25565))
             try await localClientFunc(client)
         }
