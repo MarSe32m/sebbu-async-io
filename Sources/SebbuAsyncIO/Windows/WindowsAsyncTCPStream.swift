@@ -104,7 +104,7 @@ internal final class WindowsAsyncTCPStream: @unchecked Sendable {
     }
 
     @inline(always)
-    public func receive(exactly: Int, wait: Bool = false) async throws -> [UInt8] {
+    public func receive(exactly: Int) async throws -> [UInt8] {
         try await receive(atLeast: exactly, atMost: exactly)
     }
 
