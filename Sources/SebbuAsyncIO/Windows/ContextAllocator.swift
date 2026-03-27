@@ -57,43 +57,56 @@ internal final class ContextAllocator: Sendable {
     }
 }
 
+@used
+@c
+private func flsCleanup(_ raw: UnsafeMutableRawPointer?) {
+    guard let raw else { return }
+    let allocator = Unmanaged<ContextAllocator>.fromOpaque(raw).takeUnretainedValue()
+    ThreadLocalContextAllocator.cache(allocator)
+}
+
 @usableFromInline
 internal enum ThreadLocalContextAllocator {
+    // We use a very big size here to ensure no allocator is dropped
     @usableFromInline
-    typealias TlsGetValueFn = @convention(c) (DWORD) -> UnsafeMutableRawPointer?
+    static let cachedAllocators: LockedQueue<ContextAllocator> = .init()
+
+    @inlinable
+    static func createAllocator() -> ContextAllocator {
+        if let allocator = cachedAllocators.dequeue() {
+            return allocator
+        }
+        //TODO: This cache size should be configurable somehow
+        let allocator = ContextAllocator(cacheSize: 2048)
+        // Retain the allocator with immortal +1
+        let _ = Unmanaged.passRetained(allocator)
+        return allocator
+    }
+
+    @inlinable
+    static func cache(_ allocator: ContextAllocator) {
+        let enqueued = cachedAllocators.enqueue(allocator) == nil
+        precondition(enqueued, "Failed to cache a context allocator")
+    }
 
     @usableFromInline
-    static let tlsGetValue: TlsGetValueFn = {
-        guard let kernel32 = "kernel32.dll".withCString({ GetModuleHandleA($0) }) else {
-            return TlsGetValue(_:)
-        }
-        guard let symbol = "TlsGetValue2".withCString({ GetProcAddress(kernel32, $0) }) else {
-            return TlsGetValue(_:)
-        }
-        print("Using tlsgetvalue2")
-        // We use TlsGetValue2 if available because its a bit more performant 8)
-        return unsafeBitCast(symbol, to: TlsGetValueFn.self)
-    }()
-
-    @usableFromInline
-    static let tlsIndex: DWORD = {
-        let idx = TlsAlloc()
-        precondition(idx != TLS_OUT_OF_INDEXES, "TlsAlloc failed")
+    static let flsIndex: DWORD = {
+        let idx = FlsAlloc(flsCleanup(_:))
+        precondition(idx != FLS_OUT_OF_INDEXES, "FlsAlloc failed")
         return idx
     }()
 
     @inlinable
     static var current: ContextAllocator {
-        let idx = tlsIndex
-        if let raw = tlsGetValue(idx) {
+        let idx = flsIndex
+        if let raw = FlsGetValue(idx) {
             return Unmanaged<ContextAllocator>.fromOpaque(raw).takeUnretainedValue()
         }
-        //TODO: This cache size should be configurable somehow
-        let pool = ContextAllocator(cacheSize: 65536)
-        let raw = Unmanaged.passRetained(pool).toOpaque()
-        let ok = TlsSetValue(idx, raw)
-        precondition(ok, "TlsSetValue failed")
-        return pool
+        let allocator = createAllocator()
+        let raw = Unmanaged.passUnretained(allocator).toOpaque()
+        let ok = FlsSetValue(idx, raw)
+        precondition(ok, "FlsSetValue failed")
+        return allocator
     }
 
     @inlinable
