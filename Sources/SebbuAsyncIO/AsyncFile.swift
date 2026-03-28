@@ -1,5 +1,4 @@
 import SystemPackage
-import WinSDK
 
 public final class AsyncFile: Sendable {
     public enum Error: Swift.Error {
@@ -10,8 +9,10 @@ public final class AsyncFile: Sendable {
     @usableFromInline
     internal typealias Implementation = WindowsAsyncFile
     #elseif os(Linux)
+    @usableFromInline
     internal typealias Implementation = LinuxAsyncFile
     #elseif canImport(Darwin)
+    @usableFromInline
     internal typealias Implementation = DarwinAsyncFile
     #else
     #error("Platform not supported")

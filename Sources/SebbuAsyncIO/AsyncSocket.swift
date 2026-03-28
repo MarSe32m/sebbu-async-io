@@ -3,8 +3,10 @@ public final class AsyncTCPStream: Sendable {
     @usableFromInline
     internal typealias Implementation = WindowsAsyncTCPStream
     #elseif os(Linux)
+    @usableFromInline
     internal typealias Implementation = LinuxAsyncTCPStream
     #elseif canImport(Darwin)
+    @usableFromInline
     internal typealias Implementation = DarwinAsyncTCPStream
     #else
     #error("Platform not supported")
@@ -55,8 +57,10 @@ public final class AsyncTCPListener: Sendable {
     @usableFromInline
     internal typealias Implementation = WindowsAsyncTCPListener
     #elseif os(Linux)
+    @usableFromInline
     internal typealias Implementation = LinuxAsyncTCPListener
     #elseif canImport(Darwin)
+    @usableFromInline
     internal typealias Implementation = DarwinAsyncTCPListener
     #else
     #error("Platform not supported")
@@ -93,8 +97,10 @@ public final class AsyncUDPSocket: Sendable {
     @usableFromInline
     internal typealias Implementation = WindowsAsyncUDPSocket
     #elseif os(Linux)
+    @usableFromInline
     internal typealias Implementation = LinuxAsyncUDPSocket
     #elseif canImport(Darwin)
+    @usableFromInline
     internal typealias Implementation = DarwinAsyncUDPSocket
     #else
     #error("Platform not supported")
@@ -135,8 +141,10 @@ public final class AsyncUDPClient: Sendable {
     @usableFromInline
     internal typealias Implementation = WindowsAsyncUDPClient
     #elseif os(Linux)
+    @usableFromInline
     internal typealias Implementation = LinuxAsyncUDPClient
     #elseif canImport(Darwin)
+    @usableFromInline
     internal typealias Implementation = DarwinAsyncUDPClient
     #else
     #error("Platform not supported")

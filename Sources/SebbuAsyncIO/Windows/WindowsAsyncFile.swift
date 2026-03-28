@@ -76,13 +76,13 @@ internal final class WindowsAsyncFile: Sendable {
     }
 
     @inlinable
-    public func read(atMost: Int, atAbsoluteOffset offset: UInt, wait: Bool = false) async throws(AsyncFile.Error) -> [UInt8] {
+    public func read(atMost: Int, atAbsoluteOffset offset: UInt) async throws(AsyncFile.Error) -> [UInt8] {
         let buffer = IOBuffer(byteCount: Swift.min(atMost, Int(UInt32.max)))
         var result: Eventloop.SubmissionResult
         var bytesRead: UInt32 = 0
         do {
             var span = MutableRawSpan(_unsafeStart: buffer.baseAddress!, byteCount: buffer.capacity)
-            result = try await Eventloop.shared.readFile(handle: handle, buffer: &span, bytesRead: &bytesRead, offset: UInt64(offset), skipSuccessCompletions: !wait && skipSuccessCompletions)
+            result = try await Eventloop.shared.readFile(handle: handle, buffer: &span, bytesRead: &bytesRead, offset: UInt64(offset), skipSuccessCompletions: skipSuccessCompletions)
         } catch let error as IOCompletionPort.IOCPError {
             if case .error(let errCode) = error, errCode == ERROR_HANDLE_EOF {
                 throw AsyncFile.Error.endOfFile
@@ -99,7 +99,7 @@ internal final class WindowsAsyncFile: Sendable {
     }
 
     @inlinable
-    public func write(data: [UInt8], atAbsoluteOffset offset: UInt, wait: Bool = false) async throws {
+    public func write(data: [UInt8], atAbsoluteOffset offset: UInt) async throws {
         let buffer = IOBuffer(copying: data)
         var bytesWritten = 0
         while bytesWritten < data.count {
@@ -107,7 +107,7 @@ internal final class WindowsAsyncFile: Sendable {
             let chunk = UnsafeRawBufferPointer(buffer.bytes(offset: bytesWritten, count: chunkCount))
             let bytes = RawSpan(_unsafeStart: chunk.baseAddress!, byteCount: chunkCount)
             var _bytesWritten: UInt32 = 0
-            let result = try await Eventloop.shared.writeFile(handle: handle, buffer: bytes, bytesWritten: &_bytesWritten, offset: UInt64(offset), skipSuccessCompletions: !wait && skipSuccessCompletions)
+            let result = try await Eventloop.shared.writeFile(handle: handle, buffer: bytes, bytesWritten: &_bytesWritten, offset: UInt64(offset), skipSuccessCompletions: skipSuccessCompletions)
             let writtenThisIteration = switch result {
                 case .synchronous: Int(_bytesWritten)
                 case .completion(let completion): completion.bytes

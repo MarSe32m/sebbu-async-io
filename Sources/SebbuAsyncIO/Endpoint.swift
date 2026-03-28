@@ -2,6 +2,8 @@
 import WinSDK
 #elseif canImport(Darwin)
 import Darwin
+import Network
+import Foundation
 #elseif canImport(Glibc)
 import Glibc
 #elseif canImport(Musl)
@@ -49,7 +51,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
         let storage: UnsafeMutablePointer<sockaddr_storage>
 
         @usableFromInline
-        let length: UnsafeMutablePointer<Int32>
+        let length: UnsafeMutablePointer<socklen_t>
 
         @inlinable
         convenience init() {
@@ -57,7 +59,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
         }
 
         @inlinable
-        init(storage: sockaddr_storage, length: Int32) {
+        init(storage: sockaddr_storage, length: socklen_t) {
             self.storage = .allocate(capacity: 1)
             self.length = .allocate(capacity: 1)
             self.storage.initialize(to: storage)
@@ -84,17 +86,17 @@ public struct Endpoint: Sendable, CustomStringConvertible {
     }
 
     @inlinable
-    init(storage: sockaddr_storage, length: Int32) {
+    init(storage: sockaddr_storage, length: socklen_t) {
         self.storage = Storage(storage: storage, length: length)
     }
 
     // MARK: - Construction
     public static func ipv4(host: String, port: UInt16) async throws -> Endpoint {
-        try await resolve(host: host, port: port, family: numericCast(AF_INET))
+        try await resolve(host: host, port: port, family: .IPv4)
     }
 
     public static func ipv6(host: String, port: UInt16) async throws -> Endpoint {
-        try await resolve(host: host, port: port, family: numericCast(AF_INET6))
+        try await resolve(host: host, port: port, family: .IPv6)
     }
 
     /// Fast path for a numeric IPv4 literal such as "127.0.0.1".
@@ -124,7 +126,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
                 dest.copyMemory(from: src)
             }
         }
-        self.init(storage: storage, length: Int32(MemoryLayout<sockaddr_in>.size))
+        self.init(storage: storage, length: socklen_t(MemoryLayout<sockaddr_in>.size))
     }
 
     /// Fast path for a numeric IPv6 literal such as "::1".
@@ -155,7 +157,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
             }
         }
 
-        self.init(storage: storage, length: Int32(MemoryLayout<sockaddr_in6>.size))
+        self.init(storage: storage, length: socklen_t(MemoryLayout<sockaddr_in6>.size))
     }
 
     public static func anyIPv4(port: UInt16) -> Endpoint {
@@ -176,7 +178,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
                 dest.copyMemory(from: src)
             }
         }
-        return Endpoint(storage: storage, length: Int32(MemoryLayout<sockaddr_in>.size))
+        return Endpoint(storage: storage, length: socklen_t(MemoryLayout<sockaddr_in>.size))
     }
 
     public static func loopbackIPv4(port: UInt16) -> Endpoint {
@@ -197,7 +199,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
                 dest.copyMemory(from: src)
             }
         }
-        return Endpoint(storage: storage, length: Int32(MemoryLayout<sockaddr_in>.size))
+        return Endpoint(storage: storage, length: socklen_t(MemoryLayout<sockaddr_in>.size))
     }
 
     public static func loopbackIPv6(port: UInt16) -> Endpoint {
@@ -218,7 +220,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
             }
         }
 
-        return Endpoint(storage: storage, length: Int32(MemoryLayout<sockaddr_in6>.size))
+        return Endpoint(storage: storage, length: socklen_t(MemoryLayout<sockaddr_in6>.size))
     }
 
     public static func anyIPv6(port: UInt16) -> Endpoint {
@@ -239,7 +241,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
             }
         }
 
-        return Endpoint(storage: storage, length: Int32(MemoryLayout<sockaddr_in6>.size))
+        return Endpoint(storage: storage, length: socklen_t(MemoryLayout<sockaddr_in6>.size))
     }
 
     // MARK: - Properties
@@ -255,47 +257,64 @@ public struct Endpoint: Sendable, CustomStringConvertible {
     }
 
     public var port: UInt16 {
-        return withUnsafePointer(to: storage) { storagePointer in
-            storagePointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in 
-                switch Int32(sockaddrPointer.pointee.sa_family) {
-                    case AF_INET:
-                        return sockaddrPointer.withMemoryRebound(to: sockaddr_in.self, capacity: 1) {
-                            UInt16(bigEndian: $0.pointee.sin_port)
-                        }
-                    case AF_INET6:
-                        return sockaddrPointer.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) {
-                            UInt16(bigEndian: $0.pointee.sin6_port)
-                        }
-                    default: fatalError("Unreachable")
-                }
+        switch family {
+        case .IPv4:
+            return storage.storage.withMemoryRebound(to: sockaddr_in.self, capacity: 1) {
+                UInt16(bigEndian: $0.pointee.sin_port)
+            }
+        case .IPv6:
+            return storage.storage.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) {
+                UInt16(bigEndian: $0.pointee.sin6_port)
             }
         }
     }
 
     public var host: String? {
-        let family = Int32(storage.storage.pointee.ss_family)
-
-        switch family {
+        switch Int32(storage.storage.pointee.ss_family) {
         case AF_INET:
-            let addr = withUnsafePointer(to: storage) {
-                $0.withMemoryRebound(to: sockaddr_in.self, capacity: 1) {
-                    $0.pointee.sin_addr
-                }
+            let addr = storage.storage.withMemoryRebound(to: sockaddr_in.self, capacity: 1) {
+                $0.pointee.sin_addr
             }
             return numericHostString(family: AF_INET, address: addr)
-
         case AF_INET6:
-            let addr = withUnsafePointer(to: storage) {
-                $0.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) {
-                    $0.pointee.sin6_addr
-                }
+            let addr = storage.storage.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) {
+                $0.pointee.sin6_addr
             }
             return numericHostString(family: AF_INET6, address: addr)
-
-        default:
-            fatalError("Unreachable")
+        default: fatalError("Unreachable")
         }
     }
+    
+    #if canImport(Network)
+    public var endpoint: NWEndpoint? {
+        switch family {
+        case .IPv4:
+            return withUnsafePointer(to: storage) {
+                $0.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { sin in
+                    let addr = sin.pointee.sin_addr
+                    let ipData = withUnsafeBytes(of: addr) { Data($0) }
+                    guard let ipv4 = IPv4Address(ipData) else {
+                        return nil
+                    }
+                    let port = NWEndpoint.Port(rawValue: UInt16(bigEndian: sin.pointee.sin_port))!
+                    return .hostPort(host: .ipv4(ipv4), port: port)
+                }
+            }
+        case .IPv6:
+            return withUnsafePointer(to: storage) {
+                $0.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { sin6 in
+                    let addr = sin6.pointee.sin6_addr
+                    let ipData = withUnsafeBytes(of: addr) { Data($0) }
+                    guard let ipv6 = IPv6Address(ipData) else {
+                        return nil
+                    }
+                    let port = NWEndpoint.Port(rawValue: UInt16(bigEndian: sin6.pointee.sin6_port))!
+                    return .hostPort(host: .ipv6(ipv6), port: port)
+                }
+            }
+        }
+    }
+    #endif
 
     public var description: String {
         let hostText = host ?? "<unknown>"
@@ -313,7 +332,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
         _ body: (UnsafePointer<sockaddr>, socklen_t) throws -> R
     ) rethrows -> R {
         try storage.storage.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-            try body($0, storage.length.pointee)
+            try body($0, socklen_t(storage.length.pointee))
         }
     }
 
@@ -325,7 +344,9 @@ public struct Endpoint: Sendable, CustomStringConvertible {
         if !isKnownUniquelyReferenced(&storage) {
             storage = storage.copy()
         }
-        return try body(storage.storage, storage.length)
+        return try storage.length.withMemoryRebound(to: socklen_t.self, capacity: 1) { socklen in
+            return try body(storage.storage, socklen)
+        }
     }
 }
 
@@ -333,12 +354,13 @@ public struct Endpoint: Sendable, CustomStringConvertible {
 
 extension Endpoint {
     @usableFromInline
-    static func resolve(host: String, port: UInt16, family: Int32) async throws -> Endpoint {
+    static func resolve(host: String, port: UInt16, family: Family) async throws -> Endpoint {
         try await withUnsafeThrowingContinuation { continuation in
             DispatchQueue.global().async {
+                let _family = family == .IPv4 ? AF_INET : AF_INET6
                 var hints = addrinfo()
                 hints.ai_flags = AI_NUMERICSERV
-                hints.ai_family = family
+                hints.ai_family = _family
 
                 let service = String(port)
                 var result: UnsafeMutablePointer<addrinfo>?
@@ -359,17 +381,16 @@ extension Endpoint {
                         freeaddrinfo(result)
                     }
                 }
-
-                guard let first = result else {
-                    continuation.resume(throwing: Error.noResult)
-                    return
+                var current = result
+                while let addrInfoPtr = current {
+                    defer { current = current?.pointee.ai_next }
+                    if addrInfoPtr.pointee.ai_family != _family { continue }
+                    if let endpoint = try? Endpoint(addrInfo: addrInfoPtr.pointee) {
+                        continuation.resume(returning: endpoint)
+                        return
+                    }
                 }
-                do {
-                    let endpoint = try Endpoint(addrInfo: first.pointee)
-                    continuation.resume(returning: endpoint)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
+                continuation.resume(throwing: Error.noResult)
             }
         }
     }
@@ -391,7 +412,7 @@ extension Endpoint {
             memcpy(destBytes.baseAddress!, aiAddr, length)
         }
 
-        self.init(storage: storage, length: Int32(length))
+        self.init(storage: storage, length: socklen_t(length))
     }
 }
 
