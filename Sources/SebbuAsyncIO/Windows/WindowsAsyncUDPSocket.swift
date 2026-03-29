@@ -34,32 +34,33 @@ internal final class WindowsAsyncUDPSocket: @unchecked Sendable {
     }
 
     @inlinable
-    public func send(_ data: [UInt8], to: Endpoint) async throws {
+    public func send(_ bytes: UnsafeRawBufferPointer, to: Endpoint) async throws -> Int {
         let _buffer = wsaBufCache.allocateUninitialized()
         defer { wsaBufCache.deallocateAndDeinitialize(_buffer) }
         _buffer.initialize(to: WSABUF())
-        let buffer = IOBuffer(copying: data)
-        _buffer.pointee.buf = .init(mutating: buffer.baseAddress?.assumingMemoryBound(to: CHAR.self))
-        _buffer.pointee.len = UInt32(buffer.capacity)
+        _buffer.pointee.buf = .init(mutating: bytes.baseAddress?.assumingMemoryBound(to: CHAR.self))
+        _buffer.pointee.len = UInt32(bytes.count)
         var bytesSent: UInt32 = 0
-        let _ = try await Eventloop.shared.send(socket: socket, buffer: _buffer, bytesSent: &bytesSent, address: to, skipSuccessCompletions: skipSuccessCompletions)
+        let result = try await Eventloop.shared.send(socket: socket, buffer: _buffer, bytesSent: &bytesSent, address: to, skipSuccessCompletions: skipSuccessCompletions)
+        return switch result {
+            case .synchronous: Int(bytesSent)
+            case .completion(let completion): completion.bytes
+        }
     }
 
     @inlinable
-    public func receive(from: inout Endpoint) async throws -> [UInt8] {
+    public func receive(into: UnsafeMutableRawBufferPointer, from: inout Endpoint) async throws -> Int {
         let _buffer = wsaBufCache.allocateUninitialized()
         defer { wsaBufCache.deallocateAndDeinitialize(_buffer) }
         _buffer.initialize(to: WSABUF())
-        let buffer = IOBuffer(byteCount: 1500)
-        _buffer.pointee.buf = .init(buffer.baseAddress?.assumingMemoryBound(to: CHAR.self))
-        _buffer.pointee.len = UInt32(buffer.capacity)
+        _buffer.pointee.buf = .init(into.baseAddress?.assumingMemoryBound(to: CHAR.self))
+        _buffer.pointee.len = UInt32(into.count)
         var bytesReceived: UInt32 = 0
         let result = try await Eventloop.shared.receive(socket: socket, buffer: _buffer, bytesReceived: &bytesReceived, from: &from, skipSuccessCompletions: skipSuccessCompletions)
-        let count = switch result {
+        return switch result {
             case .synchronous: Int(bytesReceived)
             case .completion(let completion): completion.bytes
         }
-        return buffer.toArray(count: count)
     }
 
     @inlinable

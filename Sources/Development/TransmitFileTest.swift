@@ -6,16 +6,16 @@ fileprivate func serverFunc(_ server: AsyncTCPListener) async throws {
     do {
         try await withThrowingDiscardingTaskGroup { group in
             while true {
-                print("Accepting")
                 let client = try await server.accept()
                 group.addTask {
                     print("Client connected")
-                    let bytesCountBytes = withUnsafeBytes(of: byteCount) { [UInt8]($0) }
-                    try await client.send(bytesCountBytes)
+                    let buffer = UnsafeMutableRawBufferPointer.allocate(byteCount: 65536, alignment: 1)
+                    buffer.storeBytes(of: byteCount, as: Int.self)
+                    try await client.sendAll(.init(start: buffer.baseAddress, count: 8))
 
                     try await client.transmit(file: file)
-                    let bytes = try await client.receive(exactly: 8)
-                    let bytesReceived = bytes.withUnsafeBytes { $0.loadUnaligned(as: Int.self) }
+                    try await client.receive(exactly: 8, into: buffer)
+                    let bytesReceived = buffer.loadUnaligned(as: Int.self)
                     print("Client said they received: ", bytesReceived, byteCount)
                 }
             }
@@ -27,13 +27,14 @@ fileprivate func serverFunc(_ server: AsyncTCPListener) async throws {
 }
 
 fileprivate func localClientFunc(_ client: AsyncTCPStream) async throws {
-    print("Connected to server!")
-    var bytes = try await client.receive(exactly: 8)
-    let bytesToReceive = bytes.withUnsafeBytes { $0.loadUnaligned(as: Int.self) }
-    
-    bytes = try await client.receive(exactly: bytesToReceive)
-    let byteCountBytes = withUnsafeBytes(of: bytes.count) { [UInt8]($0) }
-    try await client.send(byteCountBytes)
+    let buffer = UnsafeMutableRawBufferPointer.allocate(byteCount: 65536, alignment: 1)
+    defer { buffer.deallocate() }
+    //print("Connected to server!")
+    try await client.receive(exactly: 8, into: buffer)
+    let bytesToReceive = buffer.loadUnaligned(as: Int.self)
+    try await client.receive(exactly: bytesToReceive, into: buffer)
+    buffer.storeBytes(of: bytesToReceive, as: Int.self)
+    try await client.sendAll(.init(start: buffer.baseAddress, count: 8))
 }
 
 public func transmitFileTest() async throws {

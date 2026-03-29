@@ -26,19 +26,35 @@ public final class AsyncTCPStream: Sendable {
         return AsyncTCPStream(implementation: stream)
     }
 
+    //TODO: We need a RawSpan version of this
     @inlinable
-    public func send(_ data: [UInt8]) async throws {
-        try await implementation.send(data)
+    public func send(_ bytes: UnsafeRawBufferPointer) async throws -> Int {
+        try await implementation.send(bytes)
     }
 
     @inlinable
-    public func receive(atLeast: Int = 1, atMost: Int) async throws -> [UInt8] {
-        try await implementation.receive(atLeast: atLeast, atMost: atMost)
+    public func sendAll(_ bytes: UnsafeRawBufferPointer) async throws {
+        var bytesSent = 0
+        while bytesSent < bytes.count {
+            let buffer = UnsafeRawBufferPointer(start: bytes.baseAddress?.advanced(by: bytesSent), count: bytes.count - bytesSent)
+            bytesSent += try await send(buffer)
+        }
+    }
+
+    //TODO: We need an OutputRawSpan version of this
+    @inlinable
+    public func receive(into: UnsafeMutableRawBufferPointer) async throws -> Int {
+        try await implementation.receive(into: into)
     }
 
     @inline(always)
-    public func receive(exactly: Int) async throws -> [UInt8] {
-        try await receive(atLeast: exactly, atMost: exactly)
+    public func receive(exactly: Int, into: UnsafeMutableRawBufferPointer) async throws {
+        precondition(exactly <= into.count)
+        var bytesReceived = 0
+        while bytesReceived < exactly {
+            let buffer = UnsafeMutableRawBufferPointer(start: into.baseAddress?.advanced(by: bytesReceived), count: exactly - bytesReceived)
+            bytesReceived += try await receive(into: buffer)
+        }
     }
 
     @inlinable
@@ -120,14 +136,16 @@ public final class AsyncUDPSocket: Sendable {
         return AsyncUDPSocket(implementation: implementation)
     }
 
+    //TODO: We need an RawSpan version of this
     @inlinable
-    public func send(_ data: [UInt8], to: Endpoint) async throws {
-        try await implementation.send(data, to: to)
+    public func send(_ bytes: UnsafeRawBufferPointer, to: Endpoint) async throws -> Int {
+        try await implementation.send(bytes, to: to)
     }
 
+    //TODO: We need an OutputRawSpan version of this
     @inlinable
-    public func receive(from: inout Endpoint) async throws -> [UInt8] {
-        try await implementation.receive(from: &from)
+    public func receive(into: UnsafeMutableRawBufferPointer, from: inout Endpoint) async throws -> Int {
+        try await implementation.receive(into: into, from: &from)
     }
 
     @inlinable
@@ -163,14 +181,16 @@ public final class AsyncUDPClient: Sendable {
         return AsyncUDPClient(implementation: client)
     }
 
+    //TODO: We need a RawSpan version of this
     @inlinable
-    public func send(_ data: [UInt8]) async throws {
-        try await implementation.send(data)
+    public func send(_ bytes: UnsafeRawBufferPointer) async throws -> Int {
+        try await implementation.send(bytes)
     }
 
+    //TODO: We need an OutputRawSpan version of this
     @inlinable
-    public func receive() async throws -> [UInt8] {
-        try await implementation.receive()
+    public func receive(into: UnsafeMutableRawBufferPointer) async throws -> Int {
+        try await implementation.receive(into: into)
     }
 
     @inlinable

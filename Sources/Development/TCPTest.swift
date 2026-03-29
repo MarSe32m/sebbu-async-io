@@ -1,9 +1,12 @@
 import SebbuAsyncIO
+
 fileprivate func clientFunc(_ client: AsyncTCPStream) async throws {
+    let buffer = UnsafeMutableRawBufferPointer.allocate(byteCount: 1024, alignment: 1)
+    defer { buffer.deallocate() }
     while true {
-        let bytes = try await client.receive(atMost: 1024)
-        if bytes.isEmpty { break }
-        try await client.send(bytes)
+        let bytesReceived = try await client.receive(into: buffer)
+        if bytesReceived == 0 { break }
+        try await client.sendAll(.init(start: buffer.baseAddress, count: bytesReceived))
     }
 }
 
@@ -24,11 +27,16 @@ fileprivate func serverFunc(_ server: AsyncTCPListener) async throws {
 
 fileprivate func localClientFunc(_ client: AsyncTCPStream) async throws {
     print("Connected to server!")
+    let buffer = UnsafeMutableRawBufferPointer.allocate(byteCount: 65536, alignment: 1)
+    defer { buffer.deallocate() }
     while let line = readLine() {
-        let bytes = [UInt8](line.utf8)
-        try await client.send(bytes)
-        let receivedBytes = try await client.receive(exactly: bytes.count)
-        let decodedMessage = String(decoding: receivedBytes, as: UTF8.self)
+        let byteCount = line.utf8.span.bytes.withUnsafeBytes {
+            buffer.copyMemory(from: $0)
+            return $0.count
+        }
+        try await client.sendAll(.init(start: buffer.baseAddress, count: byteCount))
+        try await client.receive(exactly: byteCount, into: buffer)
+        let decodedMessage = String(decoding: buffer[0..<byteCount], as: UTF8.self)
         print("Received from server:", decodedMessage)
     }
 }

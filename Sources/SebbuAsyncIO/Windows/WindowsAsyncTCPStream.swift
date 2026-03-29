@@ -52,60 +52,39 @@ internal final class WindowsAsyncTCPStream: @unchecked Sendable {
     }
 
     @inlinable
-    public func send(_ data: [UInt8]) async throws {
+    public func send(_ bytes: UnsafeRawBufferPointer) async throws -> Int {
         let _buffer = wsaBufCache.allocateUninitialized()
         defer { wsaBufCache.deallocateAndDeinitialize(_buffer) }
         _buffer.initialize(to: WSABUF())
-        
-        let buffer = IOBuffer(copying: data)
-        var bytesSent = 0
-        while bytesSent < data.count {
-            let chunkCount = Swift.min(data.count - bytesSent, Int(UInt32.max))
-            let bufferSlice = buffer.bytes(offset: bytesSent, count: chunkCount)
-            _buffer.pointee.buf = .init(mutating: bufferSlice.baseAddress?.assumingMemoryBound(to: CHAR.self))
-            _buffer.pointee.len = UInt32(bufferSlice.count)
-            var submittedBytes: UInt32 = 0
-            let result = try await Eventloop.shared.send(socket: socket, buffer: _buffer, bytesSent: &submittedBytes, skipSuccessCompletions: skipSuccessCompletions)
-            let sentThisIteration = switch result {
-                case .synchronous: Int(submittedBytes)
-                case .completion(let completion): completion.bytes
-            }
-            if sentThisIteration == 0 {
-                throw IOCompletionPort.IOCPError.wsaError(WSAECONNRESET)
-            }
-            bytesSent += sentThisIteration
+
+        let chunkSize = Swift.min(bytes.count, Int(UInt32.max))
+        _buffer.pointee.buf = .init(mutating: bytes.baseAddress?.assumingMemoryBound(to: CHAR.self))
+        _buffer.pointee.len = UInt32(chunkSize)
+        var submittedBytes: UInt32 = 0
+        let result = try await Eventloop.shared.send(socket: socket, buffer: _buffer, bytesSent: &submittedBytes, skipSuccessCompletions: skipSuccessCompletions)
+        let bytesSent = switch result {
+            case .synchronous: Int(submittedBytes)
+            case .completion(let completion): completion.bytes
         }
+        return bytesSent
     }
 
     @inlinable
-    public func receive(atLeast: Int = 1, atMost: Int) async throws -> [UInt8] {
-        precondition(atLeast <= atMost, "atLeast must be less than or equal to atMost")
-        precondition(atLeast >= 0, "atLeast must be positive")
+    public func receive(into: UnsafeMutableRawBufferPointer) async throws -> Int {
         let _buffer = wsaBufCache.allocateUninitialized()
         defer { wsaBufCache.deallocateAndDeinitialize(_buffer) }
         _buffer.initialize(to: WSABUF())
 
-        let buffer = IOBuffer(byteCount: Swift.min(atMost, Int(UInt32.max)))
-        var bytesReceived: Int = 0
-        while bytesReceived < atLeast {
-            let bufferSlice = buffer.bytes(offset: bytesReceived, count: buffer.capacity - bytesReceived)
-            _buffer.pointee.buf = .init(mutating: bufferSlice.baseAddress?.assumingMemoryBound(to: CHAR.self))
-            _buffer.pointee.len = UInt32(bufferSlice.count)
-            var submittedBytes: UInt32 = 0
-            let result = try await Eventloop.shared.receive(socket: socket, buffer: _buffer, bytesReceived: &submittedBytes, skipSuccessCompletions: skipSuccessCompletions)
-            let receivedThisIteration = switch result {
-                case .synchronous: Int(submittedBytes)
-                case .completion(let completion): completion.bytes
-            }
-            if receivedThisIteration == 0 { break }
-            bytesReceived += receivedThisIteration
+        let bufferSize = Swift.min(into.count, Int(UInt32.max))
+        _buffer.pointee.buf = .init(mutating: into.baseAddress?.assumingMemoryBound(to: CHAR.self))
+        _buffer.pointee.len = UInt32(bufferSize)
+        var submittedBytes: UInt32 = 0
+        let result = try await Eventloop.shared.receive(socket: socket, buffer: _buffer, bytesReceived: &submittedBytes, skipSuccessCompletions: skipSuccessCompletions)
+        let bytesReceived = switch result {
+            case .synchronous: Int(submittedBytes)
+            case .completion(let completion): completion.bytes
         }
-        return buffer.toArray(count: bytesReceived)
-    }
-
-    @inline(always)
-    public func receive(exactly: Int) async throws -> [UInt8] {
-        try await receive(atLeast: exactly, atMost: exactly)
+        return bytesReceived
     }
 
     @inlinable

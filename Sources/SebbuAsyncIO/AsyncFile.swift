@@ -54,27 +54,47 @@ public final class AsyncFile: Sendable {
         try Implementation.delete(path: path)
     }
 
-    public func read(atMost: Int, atAbsoluteOffset offset: UInt) async throws(AsyncFile.Error) -> [UInt8] {
-        try await implementation.read(atMost: atMost, atAbsoluteOffset: offset)
+    //TODO: We need an OutputRawSpan version of this
+    @inlinable
+    public func read(into: UnsafeMutableRawBufferPointer, atAbsoluteOffset offset: UInt) async throws(AsyncFile.Error) -> Int {
+        try await implementation.read(into: into, atAbsoluteOffset: offset)
     }
 
+    @inlinable
     public func readUntilEndOfFile() async throws(AsyncFile.Error) -> [UInt8] {
         var data: [UInt8] = []
+        let readBuffer: UnsafeMutableRawBufferPointer = .allocate(byteCount: 65536, alignment: 1)
+        defer { readBuffer.deallocate() }
         var offset: UInt = 0
         while true {
             do {
-                let bytes = try await read(atMost: 65536, atAbsoluteOffset: offset)
-                offset += UInt(bytes.count)
-                data.append(contentsOf: bytes)
+                let bytesRead = try await read(into: readBuffer, atAbsoluteOffset: offset)
+                if bytesRead == 0 { break }
+                offset += UInt(bytesRead)
+                data.append(contentsOf: readBuffer[0..<bytesRead])
             } catch {
                 if error == .endOfFile { break }
             }
         }
         return data
     }
- 
-    public func write(data: [UInt8], atAbsoluteOffset offset: UInt) async throws {
-        try await implementation.write(data: data, atAbsoluteOffset: offset)
+    
+    //TODO: We need a RawSpan version of this
+    @inlinable
+    public func write(_ bytes: UnsafeRawBufferPointer, atAbsoluteOffset offset: UInt) async throws -> Int {
+        try await implementation.write(bytes, atAbsoluteOffset: offset)
+    }
+
+    @inlinable
+    public func writeAll(_ bytes: UnsafeRawBufferPointer, atAbsoluteOffset offset: UInt) async throws {
+        var _offset: UInt = 0
+        while _offset < UInt(bytes.count) {
+            let bytesWritten = try await write(.init(start: bytes.baseAddress?.advanced(by: Int(_offset)), count: bytes.count - Int(_offset)), atAbsoluteOffset: offset + _offset)
+            if bytesWritten == 0 {
+                throw AsyncFile.Error.unknownError
+            }
+            _offset += UInt(bytesWritten)
+        }
     }
 
     public consuming func close() throws {
