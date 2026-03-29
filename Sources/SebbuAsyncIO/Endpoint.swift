@@ -4,10 +4,13 @@ import WinSDK
 import Darwin
 import Network
 import Foundation
+import NIO
 #elseif canImport(Glibc)
 import Glibc
+import NIO
 #elseif canImport(Musl)
 import Musl
+import NIO
 #endif
 
 import Dispatch
@@ -99,6 +102,13 @@ public struct Endpoint: Sendable, CustomStringConvertible {
         try await resolve(host: host, port: port, family: .IPv6)
     }
 
+    public init(_ _sockaddr: sockaddr) {
+        self.storage = Storage()
+        self.storage.storage.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
+            pointer.pointee = _sockaddr
+        }
+    }
+    
     /// Fast path for a numeric IPv4 literal such as "127.0.0.1".
     public init(ipv4 ip: String, port: UInt16) throws {
         var addr = sockaddr_in()
@@ -169,7 +179,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
         #else
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = in_port_t(port.bigEndian)
-        addr.sin_addr = in_addr(s_addr: in_addr_t(INADDR_ANY))
+        addr.sin_addr = in_addr(s_addr: in_addr_t(INADDR_ANY.bigEndian))
         #endif
 
         var storage = sockaddr_storage()
@@ -190,7 +200,7 @@ public struct Endpoint: Sendable, CustomStringConvertible {
         #else
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = in_port_t(port.bigEndian)
-        addr.sin_addr = in_addr(s_addr: in_addr_t(INADDR_LOOPBACK))
+        addr.sin_addr = in_addr(s_addr: in_addr_t(INADDR_LOOPBACK.bigEndian))
         #endif
 
         var storage = sockaddr_storage()
@@ -289,33 +299,44 @@ public struct Endpoint: Sendable, CustomStringConvertible {
     public var endpoint: NWEndpoint? {
         switch family {
         case .IPv4:
-            return withUnsafePointer(to: storage) {
-                $0.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { sin in
-                    let addr = sin.pointee.sin_addr
-                    let ipData = withUnsafeBytes(of: addr) { Data($0) }
-                    guard let ipv4 = IPv4Address(ipData) else {
-                        return nil
-                    }
-                    let port = NWEndpoint.Port(rawValue: UInt16(bigEndian: sin.pointee.sin_port))!
-                    return .hostPort(host: .ipv4(ipv4), port: port)
+            return storage.storage.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { sin in
+                let addr = sin.pointee.sin_addr
+                let ipData = withUnsafeBytes(of: addr) { Data($0) }
+                guard let ipv4 = IPv4Address(ipData) else {
+                    return nil
                 }
+                let port = NWEndpoint.Port(rawValue: UInt16(bigEndian: sin.pointee.sin_port))!
+                return .hostPort(host: .ipv4(ipv4), port: port)
             }
         case .IPv6:
-            return withUnsafePointer(to: storage) {
-                $0.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { sin6 in
-                    let addr = sin6.pointee.sin6_addr
-                    let ipData = withUnsafeBytes(of: addr) { Data($0) }
-                    guard let ipv6 = IPv6Address(ipData) else {
-                        return nil
-                    }
-                    let port = NWEndpoint.Port(rawValue: UInt16(bigEndian: sin6.pointee.sin6_port))!
-                    return .hostPort(host: .ipv6(ipv6), port: port)
+            return storage.storage.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { sin6 in
+                let addr = sin6.pointee.sin6_addr
+                let ipData = withUnsafeBytes(of: addr) { Data($0) }
+                guard let ipv6 = IPv6Address(ipData) else {
+                    return nil
                 }
+                let port = NWEndpoint.Port(rawValue: UInt16(bigEndian: sin6.pointee.sin6_port))!
+                return .hostPort(host: .ipv6(ipv6), port: port)
             }
         }
     }
     #endif
 
+    #if canImport(NIO)
+    public var nioSocketAddress: SocketAddress {
+        switch family {
+        case .IPv4:
+            storage.storage.withMemoryRebound(to: sockaddr_in.self, capacity: 1) {
+                SocketAddress($0.pointee)
+            }
+        case .IPv6:
+            storage.storage.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) {
+                SocketAddress($0.pointee)
+            }
+        }
+    }
+    #endif
+    
     public var description: String {
         let hostText = host ?? "<unknown>"
         switch family {

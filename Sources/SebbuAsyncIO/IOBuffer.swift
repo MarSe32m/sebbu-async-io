@@ -6,10 +6,44 @@ public struct IOBuffer: ~Copyable {
     let capacity: Int
 
     @inlinable
-    init(byteCount: Int) {
-        let byteCount = Swift.max(byteCount, 1)
+    @inline(always)
+    public subscript(_ index: Int) -> UInt8 {
+        @_transparent
+        unsafeAddress {
+            precondition(index >= 0 && index < capacity, "Index out of range")
+            return UnsafePointer(storage.baseAddress!.advanced(by: index).assumingMemoryBound(to: UInt8.self))
+        }
+        @_transparent
+        unsafeMutableAddress {
+            precondition(index >= 0 && index < capacity, "Index out of range")
+            return storage.baseAddress!.advanced(by: index).assumingMemoryBound(to: UInt8.self)
+            
+        }
+    }
+    
+    @inlinable
+    @inline(always)
+    public subscript(unchecked index: Int) -> UInt8 {
+        @_transparent
+        unsafeAddress {
+            UnsafePointer(storage.baseAddress!.advanced(by: index).assumingMemoryBound(to: UInt8.self))
+        }
+        @_transparent
+        unsafeMutableAddress {
+            storage.baseAddress!.advanced(by: index).assumingMemoryBound(to: UInt8.self)
+        }
+    }
+    
+    @inlinable
+    public init(capacity: Int) {
+        let byteCount = Swift.max(capacity, 1)
         self.storage = .allocate(byteCount: byteCount, alignment: MemoryLayout<UInt8>.alignment)
         self.capacity = byteCount
+    }
+    
+    @inlinable
+    init(byteCount: Int) {
+        self.init(capacity: byteCount)
     }
 
     @inlinable
