@@ -4,7 +4,7 @@ import WinSDK
 import SebbuIOCP
 
 @usableFromInline
-internal final class WindowsAsyncFile: Sendable {
+internal final class WindowsAsyncFile: AsyncFileProtocol {
     @usableFromInline
     nonisolated(unsafe) let handle: HANDLE
 

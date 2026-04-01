@@ -78,7 +78,7 @@ public extension AsyncTCPStreamProtocol {
         let slice = into[0..<exactly]
         while bytesReceived < exactly {
             let bytesReceivedThisIteration = try await receive(into: slice[bytesReceived...])
-            bytesReceived += exactly
+            bytesReceived += bytesReceivedThisIteration
         }
     }
     

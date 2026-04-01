@@ -3,7 +3,7 @@ import WinSDK
 import SebbuIOCP
 
 @usableFromInline
-internal final class WindowsAsyncTCPListener: Sendable {
+internal final class WindowsAsyncTCPListener: AsyncTCPListenerProtocol {
     @usableFromInline
     let socket: SOCKET
 
@@ -41,7 +41,7 @@ internal final class WindowsAsyncTCPListener: Sendable {
     }
 
     @inlinable
-    public func accept() async throws -> WindowsAsyncTCPStream {
+    public func accept() async throws -> AsyncTCPStream {
         let acceptSocket = WSASocketW(family == .IPv4 ? AF_INET : AF_INET6, SOCK_STREAM, IPPROTO_TCP.rawValue, nil, 0, DWORD(WSA_FLAG_OVERLAPPED))
         let buffer = bufferCache.pop()
         defer { bufferCache.push(buffer) }
@@ -53,7 +53,8 @@ internal final class WindowsAsyncTCPListener: Sendable {
             throw error
         }
         let skipSuccessCompletions = SetFileCompletionNotificationModes(HANDLE(bitPattern: UInt(acceptSocket)), UCHAR(FILE_SKIP_COMPLETION_PORT_ON_SUCCESS))
-        return WindowsAsyncTCPStream(socket: acceptSocket, skipSuccessCompletions: skipSuccessCompletions)
+        let implementation = WindowsAsyncTCPStream(socket: acceptSocket, skipSuccessCompletions: skipSuccessCompletions)
+        return AsyncTCPStream(implementation: implementation)
     }
 
     @inlinable

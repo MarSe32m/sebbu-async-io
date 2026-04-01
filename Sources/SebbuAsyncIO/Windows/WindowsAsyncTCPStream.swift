@@ -3,7 +3,7 @@ import WinSDK
 import SebbuIOCP
 
 @usableFromInline
-internal final class WindowsAsyncTCPStream: @unchecked Sendable {
+internal final class WindowsAsyncTCPStream: @unchecked Sendable, AsyncTCPStreamProtocol {
     @usableFromInline
     let socket: SOCKET
 

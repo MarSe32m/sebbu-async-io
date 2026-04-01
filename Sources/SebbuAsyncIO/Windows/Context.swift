@@ -5,6 +5,7 @@ import Synchronization
 
 //FIXME: Define this in a C module
 @usableFromInline
+@frozen
 internal struct Context: ~Copyable, Sendable {
     @usableFromInline
     var overlapped: OVERLAPPED

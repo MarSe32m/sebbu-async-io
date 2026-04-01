@@ -16,10 +16,8 @@ func testFileCreationAndDeletion() async throws {
     let data = try await testFileReading()
     let buffer = UnsafeMutableRawBufferPointer.allocate(byteCount: data.count, alignment: 1)
     defer { buffer.deallocate() }
-    data.withUnsafeBytes {
-        buffer.copyMemory(from: $0)
-    }
-    try await file.writeAll(.init(buffer), atAbsoluteOffset: 0)
+    buffer.copyBytes(from: data)
+    try await file.writeAll(buffer, atAbsoluteOffset: 0)
     try await Task.sleep(for: .seconds(10))
     try file.close()
     try AsyncFile.delete(path: path)

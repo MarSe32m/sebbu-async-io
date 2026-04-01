@@ -3,7 +3,7 @@ import WinSDK
 import SebbuIOCP
 
 @usableFromInline
-internal final class WindowsAsyncUDPSocket: @unchecked Sendable {
+internal final class WindowsAsyncUDPSocket: @unchecked Sendable, AsyncUDPSocketProtocol {
     @usableFromInline
     let socket: SOCKET
 
