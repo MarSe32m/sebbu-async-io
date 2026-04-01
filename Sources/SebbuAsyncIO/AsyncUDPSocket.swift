@@ -46,12 +46,12 @@ public final class AsyncUDPSocket: AsyncUDPSocketProtocol {
     #if os(Windows)
     @usableFromInline
     internal typealias Implementation = WindowsAsyncUDPSocket
-    #elseif os(Linux)
+    #elseif canImport(NIO)
     @usableFromInline
-    internal typealias Implementation = LinuxAsyncUDPSocket
-    #elseif canImport(Darwin)
-    @usableFromInline
-    internal typealias Implementation = DarwinAsyncUDPSocket
+    internal typealias Implementation = NIOAsyncUDPSocket
+//    #elseif canImport(Darwin)
+//    @usableFromInline
+//    internal typealias Implementation = DarwinAsyncUDPSocket
     #else
     #error("Platform not supported")
     #endif
@@ -70,7 +70,6 @@ public final class AsyncUDPSocket: AsyncUDPSocketProtocol {
         return AsyncUDPSocket(implementation: implementation)
     }
 
-    //TODO: We need an RawSpan version of this
     @inlinable
     public func send(_ bytes: UnsafeRawBufferPointer, to: Endpoint) async throws -> Int {
         try await implementation.send(bytes, to: to)
@@ -82,7 +81,6 @@ public final class AsyncUDPSocket: AsyncUDPSocketProtocol {
         return try await send(buffer, to: to)
     }
 
-    //TODO: We need an OutputRawSpan version of this
     @inlinable
     public func receive(into: UnsafeMutableRawBufferPointer, from: inout Endpoint) async throws -> Int {
         try await implementation.receive(into: into, from: &from)

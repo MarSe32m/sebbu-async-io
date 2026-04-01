@@ -93,12 +93,12 @@ public final class AsyncTCPStream: AsyncTCPStreamProtocol {
     #if os(Windows)
     @usableFromInline
     internal typealias Implementation = WindowsAsyncTCPStream
-    #elseif os(Linux)
+    #elseif canImport(NIO)
     @usableFromInline
-    internal typealias Implementation = LinuxAsyncTCPStream
-    #elseif canImport(Darwin)
-    @usableFromInline
-    internal typealias Implementation = DarwinAsyncTCPStream
+    internal typealias Implementation = NIOAsyncTCPStream
+//    #elseif canImport(Darwin)
+//    @usableFromInline
+//    internal typealias Implementation = DarwinAsyncTCPStream
     #else
     #error("Platform not supported")
     #endif
@@ -117,13 +117,11 @@ public final class AsyncTCPStream: AsyncTCPStreamProtocol {
         return AsyncTCPStream(implementation: stream)
     }
 
-    //TODO: We need a RawSpan version of this
     @inlinable
     public func send(_ bytes: UnsafeRawBufferPointer) async throws -> Int {
         try await implementation.send(bytes)
     }
     
-    //TODO: We need an OutputRawSpan version of this
     @inlinable
     public func receive(into: UnsafeMutableRawBufferPointer) async throws -> Int {
         try await implementation.receive(into: into)

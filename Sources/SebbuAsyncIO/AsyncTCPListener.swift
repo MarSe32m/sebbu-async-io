@@ -15,12 +15,12 @@ public final class AsyncTCPListener: AsyncTCPListenerProtocol {
     #if os(Windows)
     @usableFromInline
     internal typealias Implementation = WindowsAsyncTCPListener
-    #elseif os(Linux)
+    #elseif canImport(NIO)
     @usableFromInline
-    internal typealias Implementation = LinuxAsyncTCPListener
-    #elseif canImport(Darwin)
-    @usableFromInline
-    internal typealias Implementation = DarwinAsyncTCPListener
+    internal typealias Implementation = NIOAsyncTCPListener
+//    #elseif canImport(Darwin)
+//    @usableFromInline
+//    internal typealias Implementation = DarwinAsyncTCPListener
     #else
     #error("Platform not supported")
     #endif
