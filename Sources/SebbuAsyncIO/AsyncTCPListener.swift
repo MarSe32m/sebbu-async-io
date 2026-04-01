@@ -1,0 +1,51 @@
+//
+//  AsyncTCPListener.swift
+//  sebbu-async-io
+//
+//  Created by Sebastian Toivonen on 1.4.2026.
+//
+
+public protocol AsyncTCPListenerProtocol: Sendable {
+    static func listen(on: Endpoint, backlog: Int) async throws -> Self
+    func accept() async throws -> AsyncTCPStream
+    consuming func close() throws
+}
+
+public final class AsyncTCPListener: AsyncTCPListenerProtocol {
+    #if os(Windows)
+    @usableFromInline
+    internal typealias Implementation = WindowsAsyncTCPListener
+    #elseif os(Linux)
+    @usableFromInline
+    internal typealias Implementation = LinuxAsyncTCPListener
+    #elseif canImport(Darwin)
+    @usableFromInline
+    internal typealias Implementation = DarwinAsyncTCPListener
+    #else
+    #error("Platform not supported")
+    #endif
+
+    @usableFromInline
+    let implementation: Implementation
+
+    @inlinable
+    init(implementation: Implementation) {
+        self.implementation = implementation
+    }
+
+    @inlinable
+    public static func listen(on: Endpoint, backlog: Int) async throws -> AsyncTCPListener {
+        let listener = try await Implementation.listen(on: on, backlog: backlog)
+        return AsyncTCPListener(implementation: listener)
+    }
+
+    @inlinable
+    public func accept() async throws -> AsyncTCPStream {
+        try await implementation.accept()
+    }
+
+    @inlinable
+    public consuming func close() throws {
+        try implementation.close()
+    }
+}

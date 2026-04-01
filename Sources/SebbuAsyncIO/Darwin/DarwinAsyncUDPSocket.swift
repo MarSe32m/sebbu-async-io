@@ -3,7 +3,7 @@ import NIOCore
 import NIOPosix
 
 @usableFromInline
-internal final class DarwinAsyncUDPSocket: Sendable {
+internal final class DarwinAsyncUDPSocket: AsyncUDPSocketProtocol {
     @usableFromInline
     let readStream: AsyncThrowingStream<AddressedEnvelope<ByteBuffer>, any Error>
     
@@ -62,16 +62,18 @@ internal final class DarwinAsyncUDPSocket: Sendable {
     }
 
     @inlinable
-    public func send(_ data: [UInt8], to: Endpoint) async throws {
+    public func send(_ bytes: UnsafeRawBufferPointer, to: Endpoint) async throws -> Int {
+        let bytesSent = bytes.count
         //TODO: This is highly unoptimal...
-        let bytes = ByteBuffer(bytes: data)
+        let bytes = ByteBuffer(bytes: bytes)
         try await outboundWriter.write(AddressedEnvelope(remoteAddress: to.nioSocketAddress, data: bytes))
+        return bytesSent
     }
-
+    
     @inlinable
-    public func receive(from: inout Endpoint) async throws -> [UInt8] {
+    public func receive(into: UnsafeMutableRawBufferPointer, from: inout Endpoint) async throws -> Int {
         //TODO: This is highly unoptimal...
-        for try await var addressedEnvelope in readStream {
+        for try await addressedEnvelope in readStream {
             addressedEnvelope.remoteAddress.withSockAddr { remotePointer, remoteLength in
                 from.withMutableSockAddrStoragePointer { storage, length in
                     length.pointee = .init(remoteLength)
@@ -80,10 +82,13 @@ internal final class DarwinAsyncUDPSocket: Sendable {
                     }
                 }
             }
-            return addressedEnvelope.data.readBytes(length: addressedEnvelope.data.readableBytes) ?? []
+            addressedEnvelope.data.withUnsafeReadableBytes { bytes in
+                into.copyMemory(from: bytes)
+            }
+            return addressedEnvelope.data.readableBytes
         }
         //TODO: Should we throw an error here?
-        return []
+        return 0
     }
 
     @inlinable

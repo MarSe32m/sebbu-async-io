@@ -4,7 +4,7 @@ import Dispatch
 import SystemPackage
 
 @usableFromInline
-internal final class DarwinAsyncFile: Sendable {
+internal final class DarwinAsyncFile: AsyncFileProtocol {
     @usableFromInline
     final class Storage: @unchecked Sendable {
         @usableFromInline
@@ -109,20 +109,14 @@ internal final class DarwinAsyncFile: Sendable {
     }
 
     @inlinable
-    public func read(
-        atMost count: Int,
-        atAbsoluteOffset offset: UInt
-    ) async throws(AsyncFile.Error) -> [UInt8] {
-        guard count >= 0 else {
-            //TODO: Throw EINVAL
-            throw AsyncFile.Error.unknownError
+    public func read(into: UnsafeMutableRawBufferPointer, atAbsoluteOffset offset: UInt) async throws(AsyncFile.Error) -> Int {
+        guard !into.isEmpty else {
+            return 0
         }
-        guard count > 0 else {
-            return []
-        }
+        nonisolated(unsafe) let into = into
 
         let maxOffset = UInt(off_t.max)
-        let byteCount = UInt(count)
+        let byteCount = UInt(into.count)
 
         guard offset <= maxOffset, byteCount <= maxOffset, offset <= maxOffset - byteCount else {
             //TODO: Throw EOVERFLOW
@@ -131,7 +125,7 @@ internal final class DarwinAsyncFile: Sendable {
 
         do {
             return try await withUnsafeThrowingContinuation {
-                (continuation: UnsafeContinuation<[UInt8], any Error>) in
+                (continuation: UnsafeContinuation<Int, any Error>) in
 
                 self.queue.async {
                     guard let fd = self.storage.fd else {
@@ -141,37 +135,37 @@ internal final class DarwinAsyncFile: Sendable {
                     }
 
                     let baseOffset = off_t(offset)
-                    var buffer = [UInt8](repeating: 0, count: count)
                     var totalRead = 0
                     var failure: CInt?
 
-                    buffer.withUnsafeMutableBytes { rawBuffer in
-                        guard let base = rawBuffer.baseAddress else { return }
+                    guard let base = into.baseAddress else {
+                        continuation.resume(throwing: AsyncFile.Error.unknownError)
+                        return
+                    }
 
-                        while totalRead < count {
-                            let n = Darwin.pread(
-                                fd,
-                                base.advanced(by: totalRead),
-                                count - totalRead,
-                                baseOffset + off_t(totalRead)
-                            )
+                    while totalRead < into.count {
+                        let n = Darwin.pread(
+                            fd,
+                            base.advanced(by: totalRead),
+                            into.count - totalRead,
+                            baseOffset + off_t(totalRead)
+                        )
 
-                            if n > 0 {
-                                totalRead += n
-                                continue
-                            }
-
-                            if n == 0 {
-                                break // EOF
-                            }
-
-                            if errno == EINTR {
-                                continue
-                            }
-
-                            failure = errno
-                            break
+                        if n > 0 {
+                            totalRead += n
+                            continue
                         }
+
+                        if n == 0 {
+                            break // EOF
+                        }
+
+                        if errno == EINTR {
+                            continue
+                        }
+
+                        failure = errno
+                        break
                     }
 
                     if let failure {
@@ -179,12 +173,7 @@ internal final class DarwinAsyncFile: Sendable {
                         continuation.resume(throwing: AsyncFile.Error.unknownError)
                         return
                     }
-
-                    if totalRead < buffer.count {
-                        buffer.removeSubrange(totalRead..<buffer.count)
-                    }
-
-                    continuation.resume(returning: buffer)
+                    continuation.resume(returning: totalRead)
                 }
             }
         } catch let error as AsyncFile.Error {
@@ -195,16 +184,11 @@ internal final class DarwinAsyncFile: Sendable {
     }
 
     @inlinable
-    public func write(
-        data: [UInt8],
-        atAbsoluteOffset offset: UInt
-    ) async throws {
-        guard !data.isEmpty else {
-            return
-        }
-
+    public func write(_ bytes: UnsafeRawBufferPointer, atAbsoluteOffset offset: UInt) async throws -> Int {
+        guard !bytes.isEmpty else { return 0 }
+        nonisolated(unsafe) let bytes = bytes
         let maxOffset = UInt(off_t.max)
-        let byteCount = UInt(data.count)
+        let byteCount = UInt(bytes.count)
 
         guard offset <= maxOffset, byteCount <= maxOffset, offset <= maxOffset - byteCount else {
             //TODO: Throw EOVERFLOW
@@ -212,7 +196,7 @@ internal final class DarwinAsyncFile: Sendable {
             
         }
 
-        try await withUnsafeThrowingContinuation { (continuation: UnsafeContinuation<Void, any Swift.Error>) in
+        return try await withUnsafeThrowingContinuation { (continuation: UnsafeContinuation<Int, any Swift.Error>) in
             self.queue.async {
                 guard let fd = self.storage.fd else {
                     //TODO: Throw EBADF
@@ -223,42 +207,43 @@ internal final class DarwinAsyncFile: Sendable {
                 let baseOffset = off_t(offset)
                 var totalWritten = 0
                 var failure: CInt?
+                
+                guard let base = bytes.baseAddress else {
+                    continuation.resume(throwing: AsyncFile.Error.unknownError)
+                    return
+                }
 
-                data.withUnsafeBytes { rawBuffer in
-                    guard let base = rawBuffer.baseAddress else { return }
+                while totalWritten < bytes.count {
+                    let n = Darwin.pwrite(
+                        fd,
+                        base.advanced(by: totalWritten),
+                        bytes.count - totalWritten,
+                        baseOffset + off_t(totalWritten)
+                    )
 
-                    while totalWritten < data.count {
-                        let n = Darwin.pwrite(
-                            fd,
-                            base.advanced(by: totalWritten),
-                            data.count - totalWritten,
-                            baseOffset + off_t(totalWritten)
-                        )
+                    if n > 0 {
+                        totalWritten += n
+                        continue
+                    }
 
-                        if n > 0 {
-                            totalWritten += n
-                            continue
-                        }
-
-                        if n == 0 {
-                            failure = EIO
-                            break
-                        }
-
-                        if errno == EINTR {
-                            continue
-                        }
-
-                        failure = errno
+                    if n == 0 {
+                        failure = EIO
                         break
                     }
+
+                    if errno == EINTR {
+                        continue
+                    }
+
+                    failure = errno
+                    break
                 }
 
                 if let failure {
                     //TODO: Throw `failure` errno? EIO?
                     continuation.resume(throwing: AsyncFile.Error.unknownError)
                 } else {
-                    continuation.resume()
+                    continuation.resume(returning: totalWritten)
                 }
             }
         }

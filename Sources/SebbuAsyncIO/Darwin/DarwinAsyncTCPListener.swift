@@ -2,7 +2,7 @@
 import Network
 
 @usableFromInline
-internal final class DarwinAsyncTCPListener: Sendable {
+internal final class DarwinAsyncTCPListener: AsyncTCPListenerProtocol {
     @usableFromInline
     let listener: NetworkListener<TCP>
     
@@ -43,9 +43,10 @@ internal final class DarwinAsyncTCPListener: Sendable {
     }
 
     @inlinable
-    public func accept() async throws -> DarwinAsyncTCPStream {
+    public func accept() async throws -> AsyncTCPStream {
         for try await connection in stream {
-            return DarwinAsyncTCPStream(connection: connection)
+            let implementation = DarwinAsyncTCPStream(connection: connection)
+            return AsyncTCPStream(implementation: implementation)
         }
         //TODO: Throw a more descriptive error
         throw _Concurrency.CancellationError()

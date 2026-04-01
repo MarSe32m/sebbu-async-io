@@ -3,7 +3,7 @@ import Network
 import Foundation
 
 @usableFromInline
-internal final class DarwinAsyncUDPClient: Sendable {
+internal final class DarwinAsyncUDPClient: AsyncUDPClientProtocol {
     @usableFromInline
     let connection: NetworkConnection<UDP>
     
@@ -25,14 +25,20 @@ internal final class DarwinAsyncUDPClient: Sendable {
         return DarwinAsyncUDPClient(connection: connection)
     }
 
+    //TODO: We need a RawSpan version of this
     @inlinable
-    public func send(_ data: [UInt8]) async throws {
-        try await connection.send(data)
+    public func send(_ bytes: UnsafeRawBufferPointer) async throws -> Int {
+        try await connection.send(bytes)
+        return bytes.count
     }
 
+    //TODO: We need an OutputRawSpan version of this
     @inlinable
-    public func receive() async throws -> [UInt8] {
-        try await [UInt8](connection.receive().content)
+    public func receive(into: UnsafeMutableRawBufferPointer) async throws -> Int {
+        try await connection.receive().content.withUnsafeBytes { bytes in
+            into.copyMemory(from: bytes)
+            return bytes.count
+        }
     }
 
     @inlinable
