@@ -29,12 +29,13 @@ fileprivate func serverFunc(_ server: AsyncTCPListener) async throws {
 fileprivate func localClientFunc(_ client: AsyncTCPStream) async throws {
     let buffer = UnsafeMutableRawBufferPointer.allocate(byteCount: 65536, alignment: 1)
     defer { buffer.deallocate() }
-    //print("Connected to server!")
+    print("Connected to server!")
     try await client.receive(exactly: 8, into: buffer)
     let bytesToReceive = buffer.loadUnaligned(as: Int.self)
     try await client.receive(exactly: bytesToReceive, into: buffer)
     buffer.storeBytes(of: bytesToReceive, as: Int.self)
     try await client.sendAll(.init(start: buffer.baseAddress, count: 8))
+    try await Task.sleep(for: .milliseconds(10))
 }
 
 public func transmitFileTest() async throws {

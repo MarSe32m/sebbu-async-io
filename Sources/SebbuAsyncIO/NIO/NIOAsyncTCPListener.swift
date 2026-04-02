@@ -28,6 +28,7 @@ internal final class NIOAsyncTCPListener: AsyncTCPListenerProtocol {
             do {
                 try await _channel.executeThenClose { inbound, _ in
                     for try await channel in inbound {
+                        //TODO: Back pressure?
                         continuation.yield(channel)
                     }
                 }
@@ -61,6 +62,8 @@ internal final class NIOAsyncTCPListener: AsyncTCPListenerProtocol {
     public func accept() async throws -> AsyncTCPStream {
         for try await channel in stream {
             //TODO: Construct implementation -> return AsyncTCPStream(implementation: implementation)
+            let implementation = NIOAsyncTCPStream(channel: channel)
+            return AsyncTCPStream(implementation: implementation)
         }
         //TODO: A more descriptive error
         throw _Concurrency.CancellationError()

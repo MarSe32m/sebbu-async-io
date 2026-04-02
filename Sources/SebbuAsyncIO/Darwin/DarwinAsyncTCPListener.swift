@@ -45,8 +45,8 @@ internal final class DarwinAsyncTCPListener: AsyncTCPListenerProtocol {
     @inlinable
     public func accept() async throws -> AsyncTCPStream {
         for try await connection in stream {
-            let implementation = DarwinAsyncTCPStream(connection: connection)
-            return AsyncTCPStream(implementation: implementation)
+            //let implementation = DarwinAsyncTCPStream(connection: connection)
+            //return AsyncTCPStream(implementation: implementation)
         }
         //TODO: Throw a more descriptive error
         throw _Concurrency.CancellationError()

@@ -87,6 +87,19 @@ public extension AsyncTCPStreamProtocol {
         let buffer = UnsafeMutableRawBufferPointer(rebasing: into)
         try await receive(exactly: exactly, into: buffer)
     }
+    
+    @inlinable
+    func transmit(file: borrowing AsyncFile) async throws {
+        let fileSize = try file.fileSize
+        let buffer = UnsafeMutableRawBufferPointer.allocate(byteCount: Swift.min(65536, fileSize), alignment: 1)
+        defer { buffer.deallocate() }
+        var offset: UInt = 0
+        while Int(offset) < fileSize {
+            let bytesRead = try await file.read(into: buffer, atAbsoluteOffset: offset)
+            let sentBytes = try await send(buffer[0..<bytesRead])
+           offset += UInt(sentBytes)
+        }
+    }
 }
 
 public final class AsyncTCPStream: AsyncTCPStreamProtocol {
