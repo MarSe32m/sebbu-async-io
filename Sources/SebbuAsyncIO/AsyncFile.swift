@@ -1,21 +1,21 @@
 import SystemPackage
 
 public protocol AsyncFileProtocol: Sendable {
-    var fileSize: Int { get throws }
+    var fileSize: Int { get async throws }
     
     static func open(
         path: FilePath,
         //mode: FileOpenMode,
         //options: FileOpenOptions = []
-    ) throws -> Self
+    ) async throws -> Self
 
     static func create(
         path: FilePath,
         //mode: FileCreateMode,
         //options: FileCreateOptions = []
-    ) throws -> Self
+    ) async throws -> Self
 
-    static func delete(path: FilePath) throws
+    static func delete(path: FilePath) async throws
 
     //TODO: We need an OutputRawSpan version of this
     func read(into: UnsafeMutableRawBufferPointer, atAbsoluteOffset offset: UInt) async throws(AsyncFile.Error) -> Int
@@ -23,7 +23,7 @@ public protocol AsyncFileProtocol: Sendable {
     //TODO: We need a RawSpan version of this
     func write(_ bytes: UnsafeRawBufferPointer, atAbsoluteOffset offset: UInt) async throws -> Int
 
-    consuming func close() throws
+    consuming func close() async throws
 }
 
 public extension AsyncFileProtocol {
@@ -124,12 +124,9 @@ public final class AsyncFile: AsyncFileProtocol {
     #if os(Windows)
     @usableFromInline
     internal typealias Implementation = WindowsAsyncFile
-    #elseif os(Linux)
+    #elseif canImport(NIO)
     @usableFromInline
-    internal typealias Implementation = LinuxAsyncFile
-    #elseif canImport(Darwin)
-    @usableFromInline
-    internal typealias Implementation = DarwinAsyncFile
+    internal typealias Implementation = NIOAsyncFile
     #else
     #error("Platform not supported")
     #endif
@@ -138,8 +135,8 @@ public final class AsyncFile: AsyncFileProtocol {
     let implementation: Implementation
 
     public var fileSize: Int {
-        get throws {
-            try implementation.fileSize
+        get async throws {
+            try await implementation.fileSize
         }
     }
 
@@ -152,8 +149,8 @@ public final class AsyncFile: AsyncFileProtocol {
         path: FilePath,
         //mode: FileOpenMode,
         //options: FileOpenOptions = []
-    ) throws -> AsyncFile {
-        let implementation = try Implementation.open(path: path)
+    ) async throws -> AsyncFile {
+        let implementation = try await Implementation.open(path: path)
         return AsyncFile(implementation: implementation)
     }
 
@@ -161,13 +158,13 @@ public final class AsyncFile: AsyncFileProtocol {
         path: FilePath,
         //mode: FileCreateMode,
         //options: FileCreateOptions = []
-    ) throws -> AsyncFile {
-        let implementation = try Implementation.create(path: path)
+    ) async throws -> AsyncFile {
+        let implementation = try await Implementation.create(path: path)
         return AsyncFile(implementation: implementation)
     }
 
-    public static func delete(path: FilePath) throws {
-        try Implementation.delete(path: path)
+    public static func delete(path: FilePath) async throws {
+        try await Implementation.delete(path: path)
     }
 
     //TODO: We need an OutputRawSpan version of this
@@ -182,7 +179,7 @@ public final class AsyncFile: AsyncFileProtocol {
         try await implementation.write(bytes, atAbsoluteOffset: offset)
     }
 
-    public consuming func close() throws {
-        try implementation.close()
+    public consuming func close() async throws {
+        try await implementation.close()
     }
 }

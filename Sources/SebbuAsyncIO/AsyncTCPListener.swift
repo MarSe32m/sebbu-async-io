@@ -8,7 +8,7 @@
 public protocol AsyncTCPListenerProtocol: Sendable {
     static func listen(on: Endpoint, backlog: Int) async throws -> Self
     func accept() async throws -> AsyncTCPStream
-    consuming func close() throws
+    consuming func close() async throws
 }
 
 public final class AsyncTCPListener: AsyncTCPListenerProtocol {
@@ -18,9 +18,6 @@ public final class AsyncTCPListener: AsyncTCPListenerProtocol {
     #elseif canImport(NIO)
     @usableFromInline
     internal typealias Implementation = NIOAsyncTCPListener
-//    #elseif canImport(Darwin)
-//    @usableFromInline
-//    internal typealias Implementation = DarwinAsyncTCPListener
     #else
     #error("Platform not supported")
     #endif
@@ -45,7 +42,7 @@ public final class AsyncTCPListener: AsyncTCPListenerProtocol {
     }
 
     @inlinable
-    public consuming func close() throws {
-        try implementation.close()
+    public consuming func close() async throws {
+        try await implementation.close()
     }
 }

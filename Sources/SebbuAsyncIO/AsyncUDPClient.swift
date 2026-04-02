@@ -14,7 +14,7 @@ public protocol AsyncUDPClientProtocol: Sendable {
     //TODO: We need an OutputRawSpan version of this
     func receive(into: UnsafeMutableRawBufferPointer) async throws -> Int
 
-    consuming func close() throws
+    consuming func close() async throws
 }
 
 public extension AsyncUDPClientProtocol {
@@ -49,9 +49,6 @@ public final class AsyncUDPClient: AsyncUDPClientProtocol {
     #elseif canImport(NIO)
     @usableFromInline
     internal typealias Implementation = NIOAsyncUDPClient
-//    #elseif canImport(Darwin)
-//    @usableFromInline
-//    internal typealias Implementation = DarwinAsyncUDPClient
     #else
     #error("Platform not supported")
     #endif
@@ -92,7 +89,7 @@ public final class AsyncUDPClient: AsyncUDPClientProtocol {
     }
 
     @inlinable
-    public consuming func close() throws {
-        try implementation.close()
+    public consuming func close() async throws {
+        try await implementation.close()
     }
 }

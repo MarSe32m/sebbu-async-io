@@ -34,6 +34,7 @@ let package = Package(
                 .product(name: "BasicContainers", package: "swift-collections"),
                 .product(name: "DequeModule", package: "swift-collections"),
                 .product(name: "NIO", package: "swift-nio", condition: .when(platforms: [.linux, .macOS, .iOS, .watchOS, .tvOS])),
+                .product(name: "_NIOFileSystem", package: "swift-nio", condition: .when(platforms: [.linux, .macOS, .iOS, .watchOS, .tvOS])),
                 .product(name: "AsyncAlgorithms", package: "swift-async-algorithms")
             ],
             swiftSettings: [

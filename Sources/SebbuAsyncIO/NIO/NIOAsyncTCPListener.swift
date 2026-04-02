@@ -11,33 +11,11 @@ import NIO
 @usableFromInline
 internal final class NIOAsyncTCPListener: AsyncTCPListenerProtocol {
     @usableFromInline
-    let channel: NIOAsyncChannel<NIOAsyncChannel<ByteBuffer, ByteBuffer>, Never>
-    
-    @usableFromInline
-    let listenerTask: Task<Void, Never>
-    
-    @usableFromInline
-    let stream: AsyncThrowingStream<NIOAsyncChannel<ByteBuffer, ByteBuffer>, any Error>
+    let wrapper: NIOAsyncChannelWrapper<NIOAsyncChannel<ByteBuffer, ByteBuffer>, Never>
     
     @inlinable
-    init(channel _channel: NIOAsyncChannel<NIOAsyncChannel<ByteBuffer, ByteBuffer>, Never>) {
-        self.channel = _channel
-        let (_stream, continuation) = AsyncThrowingStream<NIOAsyncChannel<ByteBuffer, ByteBuffer>, any Error>.makeStream()
-        self.stream = _stream
-        self.listenerTask = Task {
-            do {
-                try await _channel.executeThenClose { inbound, _ in
-                    for try await channel in inbound {
-                        //TODO: Back pressure?
-                        continuation.yield(channel)
-                    }
-                }
-            } catch {
-                continuation.finish(throwing: error)
-                return
-            }
-            continuation.finish()
-        }
+    init(channel: NIOAsyncChannel<NIOAsyncChannel<ByteBuffer, ByteBuffer>, Never>) {
+        self.wrapper = NIOAsyncChannelWrapper(channel: channel)
     }
     
     @inlinable
@@ -60,8 +38,7 @@ internal final class NIOAsyncTCPListener: AsyncTCPListenerProtocol {
 
     @inlinable
     public func accept() async throws -> AsyncTCPStream {
-        for try await channel in stream {
-            //TODO: Construct implementation -> return AsyncTCPStream(implementation: implementation)
+        if let channel = try await wrapper.receive() {
             let implementation = NIOAsyncTCPStream(channel: channel)
             return AsyncTCPStream(implementation: implementation)
         }
@@ -70,11 +47,13 @@ internal final class NIOAsyncTCPListener: AsyncTCPListenerProtocol {
     }
 
     @inlinable
-    public consuming func close() throws {
-        listenerTask.cancel()
-        channel.channel.close(promise: nil)
+    public consuming func close() async throws {
+        try await wrapper.close()
     }
     
-    deinit { try? close() }
+    @inlinable
+    deinit {
+        wrapper.syncClose()
+    }
 }
 #endif

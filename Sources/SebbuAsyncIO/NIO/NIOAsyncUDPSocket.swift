@@ -17,6 +17,7 @@ public final class NIOAsyncUDPSocket: AsyncUDPSocketProtocol {
         self.wrapper = NIOAsyncChannelWrapper(channel: channel)
     }
     
+    @inlinable
     public static func bind(to: Endpoint) async throws -> NIOAsyncUDPSocket {
         let channel = try await DatagramBootstrap(group: .singletonMultiThreadedEventLoopGroup)
             .channelOption(.recvAllocator, value: FixedSizeRecvByteBufferAllocator(capacity: 2048))
@@ -36,6 +37,7 @@ public final class NIOAsyncUDPSocket: AsyncUDPSocketProtocol {
         return NIOAsyncUDPSocket(channel: channel)
     }
     
+    @inlinable
     public func send(_ bytes: UnsafeRawBufferPointer, to: Endpoint) async throws -> Int {
         let bytesSent = bytes.count
         //TODO: This is highly unoptimal...
@@ -44,6 +46,7 @@ public final class NIOAsyncUDPSocket: AsyncUDPSocketProtocol {
         return bytesSent
     }
     
+    @inlinable
     public func receive(into: UnsafeMutableRawBufferPointer, from: inout Endpoint) async throws -> Int {
         if var packet = try await wrapper.receive() {
             let bytesReceived = packet.data.read(into: into)
@@ -60,10 +63,11 @@ public final class NIOAsyncUDPSocket: AsyncUDPSocketProtocol {
         return 0
     }
     
-    public func close() throws {
-        try wrapper.close()
+    @inlinable
+    public func close() async throws {
+        try await wrapper.close()
     }
     
-    deinit { try? close() }
+    deinit { wrapper.syncClose() }
 }
 #endif

@@ -16,7 +16,7 @@ public protocol AsyncTCPStreamProtocol: Sendable {
     
     func transmit(file: borrowing AsyncFile) async throws
 
-    consuming func close() throws
+    consuming func close() async throws
 }
 
 public extension AsyncTCPStreamProtocol {
@@ -90,7 +90,7 @@ public extension AsyncTCPStreamProtocol {
     
     @inlinable
     func transmit(file: borrowing AsyncFile) async throws {
-        let fileSize = try file.fileSize
+        let fileSize = try await file.fileSize
         let buffer = UnsafeMutableRawBufferPointer.allocate(byteCount: Swift.min(65536, fileSize), alignment: 1)
         defer { buffer.deallocate() }
         var offset: UInt = 0
@@ -109,9 +109,6 @@ public final class AsyncTCPStream: AsyncTCPStreamProtocol {
     #elseif canImport(NIO)
     @usableFromInline
     internal typealias Implementation = NIOAsyncTCPStream
-//    #elseif canImport(Darwin)
-//    @usableFromInline
-//    internal typealias Implementation = DarwinAsyncTCPStream
     #else
     #error("Platform not supported")
     #endif
@@ -146,7 +143,7 @@ public final class AsyncTCPStream: AsyncTCPStreamProtocol {
     }
 
     @inlinable
-    public consuming func close() throws {
-        try implementation.close()
+    public consuming func close() async throws {
+        try await implementation.close()
     }
 }

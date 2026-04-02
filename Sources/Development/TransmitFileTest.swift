@@ -1,8 +1,8 @@
 import SebbuAsyncIO
 
 fileprivate func serverFunc(_ server: AsyncTCPListener) async throws {
-    let file = try AsyncFile.open(path: "Package.swift")
-    let byteCount = try file.fileSize
+    let file = try await AsyncFile.open(path: "Package.swift")
+    let byteCount = try await file.fileSize
     do {
         try await withThrowingDiscardingTaskGroup { group in
             while true {
@@ -35,6 +35,7 @@ fileprivate func localClientFunc(_ client: AsyncTCPStream) async throws {
     try await client.receive(exactly: bytesToReceive, into: buffer)
     buffer.storeBytes(of: bytesToReceive, as: Int.self)
     try await client.sendAll(.init(start: buffer.baseAddress, count: 8))
+    //try await client.close()
     try await Task.sleep(for: .milliseconds(10))
 }
 
