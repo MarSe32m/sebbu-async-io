@@ -76,12 +76,13 @@ internal final class WindowsAsyncUDPClient: @unchecked Sendable, AsyncUDPClientP
     }
 
     @inlinable
-    public consuming func close() throws {
+    public consuming func close() async throws {
         closesocket(socket)
     }
 
+    @inlinable
     deinit {
-        try? close()
+        closesocket(socket)
     }
 }
 #endif

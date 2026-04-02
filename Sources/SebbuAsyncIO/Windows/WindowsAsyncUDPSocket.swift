@@ -64,12 +64,13 @@ internal final class WindowsAsyncUDPSocket: @unchecked Sendable, AsyncUDPSocketP
     }
 
     @inlinable
-    public consuming func close() throws {
+    public consuming func close() async throws {
         closesocket(socket)
     }
-    
+
+    @inlinable
     deinit {
-        try? close()
+        closesocket(socket)
     }
 }
 #endif

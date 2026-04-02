@@ -58,6 +58,9 @@ internal struct Context: ~Copyable, Sendable {
     public mutating func reset() {
         self.overlapped = OVERLAPPED()
         self.state.store(.start, ordering: .relaxed)
+        self.error = nil
+        self.completion = Eventloop.Completion()
+        self.continuation = nil
     }
 }
 

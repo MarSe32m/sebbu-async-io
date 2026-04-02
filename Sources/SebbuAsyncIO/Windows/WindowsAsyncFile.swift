@@ -12,7 +12,7 @@ internal final class WindowsAsyncFile: AsyncFileProtocol {
     let skipSuccessCompletions: Bool
 
     public var fileSize: Int {
-        get throws {
+        get async throws {
             var upperSize: DWORD = 0
             let lowerSize = GetFileSize(handle, &upperSize)
             if lowerSize == INVALID_FILE_SIZE {
@@ -34,7 +34,7 @@ internal final class WindowsAsyncFile: AsyncFileProtocol {
         path: FilePath,
         //mode: FileOpenMode,
         //options: FileOpenOptions = []
-    ) throws -> WindowsAsyncFile {
+    ) async throws -> WindowsAsyncFile {
         let handle = path.withPlatformString { path in 
             CreateFileW(path, GENERIC_READ | UInt32(bitPattern: GENERIC_WRITE), DWORD(FILE_SHARE_READ), nil, DWORD(OPEN_EXISTING), DWORD(FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED), nil)
         }
@@ -51,7 +51,7 @@ internal final class WindowsAsyncFile: AsyncFileProtocol {
         path: FilePath,
         //mode: FileCreateMode,
         //options: FileCreateOptions = []
-    ) throws -> WindowsAsyncFile {
+    ) async throws -> WindowsAsyncFile {
         let handle = path.withPlatformString { path in 
             CreateFileW(path, GENERIC_READ | UInt32(bitPattern: GENERIC_WRITE), DWORD(FILE_SHARE_READ), nil, DWORD(CREATE_NEW), DWORD(FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED), nil)
         }
@@ -66,7 +66,7 @@ internal final class WindowsAsyncFile: AsyncFileProtocol {
     @inlinable
     public static func delete(
         path: FilePath
-    ) throws {
+    ) async throws {
         let deleted = path.withPlatformString { path in 
             DeleteFileW(path)
         }
@@ -111,13 +111,13 @@ internal final class WindowsAsyncFile: AsyncFileProtocol {
     }
 
     @inlinable
-    public consuming func close() throws {
+    public consuming func close() async throws {
         CloseHandle(handle)
     }
     
     @inlinable
     deinit {
-        try? close()
+        CloseHandle(handle)
     }
 }
 #endif
